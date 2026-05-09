@@ -95,20 +95,26 @@ def display_table(data, cols=None, total=True):
         row["name"] = "TOTAL"
         row["move_arrow"] = "🟢 ▲" if data["pnl_inr"].sum() >= 0 else "🔴 ▼"
         row["currency"] = "INR"
-        for c in ["invested_value","current_value","current_value_inr","pnl_inr","total_return_yield_inr"]:
+        for c in ["invested_value","current_value","current_value_inr","pnl_inr","expected_return_amount_inr","yield_dividend_amount_inr","total_return_yield_inr"]:
             if c in row: row[c] = data[c].sum()
+        base = float(data["current_value_inr"].sum()) if "current_value_inr" in data.columns else 0.0
+        if base:
+            if "expected_return_pct" in row and "expected_return_amount_inr" in data.columns:
+                row["expected_return_pct"] = float(data["expected_return_amount_inr"].sum()) / base
+            if "yield_dividend_pct" in row and "yield_dividend_amount_inr" in data.columns:
+                row["yield_dividend_pct"] = float(data["yield_dividend_amount_inr"].sum()) / base
         show = pd.concat([show, pd.DataFrame([row])], ignore_index=True)
     for c in ["invested_rate","live_rate","current_rate","invested_value","current_value"]:
         if c in show.columns and "currency" in show.columns:
             show[c] = [fmt_native(v, cc) for v, cc in zip(show[c], show["currency"])]
-    for c in ["current_value_inr","pnl_inr","total_return_yield_inr"]:
+    for c in ["current_value_inr","pnl_inr","expected_return_amount_inr","yield_dividend_amount_inr","total_return_yield_inr"]:
         if c in show.columns: show[c] = show[c].apply(fmt_inr)
     if "usd_equivalent" in show.columns: show["usd_equivalent"] = show["usd_equivalent"].apply(lambda x: "" if pd.isna(x) else fmt_usd(x))
     for c in ["pnl_pct","expected_return_pct","yield_dividend_pct"]:
         if c in show.columns: show[c] = show[c].apply(fmt_pct)
     if "quantity" in show.columns:
         show["quantity"] = show["quantity"].apply(lambda x: f"{float(x):,.4f}" if str(x) != "" else "")
-    rename = {"move_arrow":"P/L","portfolio":"Portfolio","asset_class":"Asset","sub_class":"Type","name":"Holding","ticker":"Ticker","currency":"Ccy","quantity":"Qty","invested_rate":"Avg Cost","live_rate":"Live","current_rate":"Current Rate","invested_value":"Invested","current_value":"Current Native","current_value_inr":"Current INR","usd_equivalent":"USD Eq.","pnl_inr":"P/L INR","pnl_pct":"P/L %","expected_return_pct":"Return %","yield_dividend_pct":"Yield/Div %","total_return_yield_inr":"Return+Yield INR","price_status":"Price","data_source":"Source"}
+    rename = {"move_arrow":"P/L","portfolio":"Portfolio","asset_class":"Asset","sub_class":"Type","name":"Holding","ticker":"Ticker","currency":"Ccy","quantity":"Qty","invested_rate":"Avg Cost","live_rate":"Live","current_rate":"Current Rate","invested_value":"Invested","current_value":"Current Native","current_value_inr":"Current INR","usd_equivalent":"USD Eq.","pnl_inr":"P/L INR","pnl_pct":"P/L %","expected_return_pct":"Return %","yield_dividend_pct":"Yield/Div %","expected_return_amount_inr":"Return INR","yield_dividend_amount_inr":"Yield/Div INR","total_return_yield_inr":"Return+Yield INR","price_status":"Price","data_source":"Source"}
     return show.rename(columns={k:v for k,v in rename.items() if k in show.columns})
 
 def table(title, data):
@@ -127,7 +133,7 @@ if page == "Dashboard":
     st.title("Harsh Global Portfolio - Family Office")
     st.caption("Cost basis separated from live current value · USD/INR ₹94.44 · no manual toggles")
     mood = "Bullish" if T["pnl_inr"] >= 0 else "Bearish"
-    st.markdown(f"<div class='tape'><span>🐂 NIFTY · S&P 500 · NASDAQ · DOW · GOLD · BRENT · USD/INR ₹94.44 · AMFI NAV · PORTFOLIO MOOD: {mood} 🐻</span></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='tape'><span>🐂 NIFTY · S&P 500 · NASDAQ · DOW · GOLD · BRENT · USD/INR ₹94.44 · PORTFOLIO MOOD: {mood} 🐻</span></div>", unsafe_allow_html=True)
     c1,c2,c3,c4 = st.columns(4)
     c1.markdown(f"<div class='card'><div class='metric-title'>Current Net Worth</div><div class='metric-value'>{fmt_inr(T['current_value_inr'])}</div></div>", unsafe_allow_html=True)
     c2.markdown(f"<div class='card'><div class='metric-title'>Invested / Base</div><div class='metric-value'>{fmt_inr(T['invested_value_inr'])}</div></div>", unsafe_allow_html=True)
@@ -158,7 +164,7 @@ elif page == "Indian Portfolio":
 elif page == "US Portfolio":
     st.title("US / Global Portfolio")
     us = df[df["portfolio"].eq("US/GLOBAL")]
-    for label, filt in [("All",None),("Equity","Equity"),("ETF","ETF"),("Fixed Income","Fixed Income"),("Cash","Cash"),("Mixed Asset","Mixed Asset"),("Real Estate","Real Estate"),("Liability","Liability")]:
+    for label, filt in [("All",None),("Equity","Equity"),("ETF","ETF"),("Fixed Income","Fixed Income"),("Mixed Asset","Mixed Asset"),("Cash","Cash"),("Real Estate","Real Estate"),("Liability","Liability")]:
         with st.expander(label, expanded=(label=="All")):
             table(label, us if filt is None else us[us["asset_class"].eq(filt)])
 
@@ -166,27 +172,23 @@ elif page == "Returns & Yield":
     st.title("Returns & Yield")
     cols = ["portfolio","asset_class","name","current_value_inr","expected_return_pct","expected_return_amount_inr","yield_dividend_pct","yield_dividend_amount_inr","total_return_yield_inr"]
     ret = df[cols].copy()
+    total_current = float(df["current_value_inr"].sum())
+    total_row = {c: "" for c in ret.columns}
+    total_row.update({
+        "name": "TOTAL",
+        "current_value_inr": df["current_value_inr"].sum(),
+        "expected_return_amount_inr": df["expected_return_amount_inr"].sum(),
+        "yield_dividend_amount_inr": df["yield_dividend_amount_inr"].sum(),
+        "total_return_yield_inr": df["total_return_yield_inr"].sum(),
+        "expected_return_pct": df["expected_return_amount_inr"].sum() / total_current if total_current else 0,
+        "yield_dividend_pct": df["yield_dividend_amount_inr"].sum() / total_current if total_current else 0,
+    })
+    ret = pd.concat([ret, pd.DataFrame([total_row])], ignore_index=True)
     for c in ["current_value_inr","expected_return_amount_inr","yield_dividend_amount_inr","total_return_yield_inr"]:
         ret[c] = ret[c].apply(fmt_inr)
     for c in ["expected_return_pct","yield_dividend_pct"]:
         ret[c] = ret[c].apply(fmt_pct)
-    total_row = {
-        "portfolio": "TOTAL",
-        "asset_class": "",
-        "name": "Portfolio Total",
-        "current_value_inr": fmt_inr(df["current_value_inr"].sum()),
-        "expected_return_pct": "",
-        "expected_return_amount_inr": fmt_inr(df["expected_return_amount_inr"].sum()),
-        "yield_dividend_pct": "",
-        "yield_dividend_amount_inr": fmt_inr(df["yield_dividend_amount_inr"].sum()),
-        "total_return_yield_inr": fmt_inr(df["total_return_yield_inr"].sum()),
-    }
-    ret = pd.concat([ret, pd.DataFrame([total_row])], ignore_index=True)
     st.dataframe(ret.rename(columns={"portfolio":"Portfolio","asset_class":"Asset","name":"Holding","current_value_inr":"Current INR","expected_return_pct":"Return %","expected_return_amount_inr":"Return ₹","yield_dividend_pct":"Yield/Div %","yield_dividend_amount_inr":"Yield/Div ₹","total_return_yield_inr":"Total ₹"}), use_container_width=True, hide_index=True, height=650)
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Expected Return Total", fmt_inr(df["expected_return_amount_inr"].sum()))
-    c2.metric("Dividend / Yield Total", fmt_inr(df["yield_dividend_amount_inr"].sum()))
-    c3.metric("Return + Yield Total", fmt_inr(df["total_return_yield_inr"].sum()))
 
 elif page == "Consolidated Portfolio":
     st.title("Consolidated Portfolio")
@@ -222,14 +224,13 @@ elif page == "Net Worth Growth":
     snaps = get_snapshots()
     if not snaps.empty:
         fig = px.line(snaps, x="snapshot_date", y="net_worth_inr", markers=True, title="Daily Net Worth")
-        fig.update_traces(hovertemplate="Date: %{x}<br>Net Worth: ₹%{y:,.1f}<extra></extra>")
-        fig.update_layout(height=500, yaxis_tickprefix="₹", yaxis_tickformat=",.1f", paper_bgcolor="rgba(0,0,0,0)")
+        fig.update_layout(height=500, yaxis_tickprefix="₹", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        snap_show = snaps.copy()
-        for c in ["net_worth_inr","invested_value_inr","current_value_inr","pnl_inr"]:
-            if c in snap_show.columns:
-                snap_show[c] = snap_show[c].apply(fmt_inr)
-        st.dataframe(snap_show, use_container_width=True, hide_index=True)
+        snaps_display = snaps.copy()
+        for c in ["net_worth_inr", "invested_value_inr", "current_value_inr", "pnl_inr"]:
+            if c in snaps_display.columns:
+                snaps_display[c] = snaps_display[c].apply(fmt_inr)
+        st.dataframe(snaps_display.rename(columns={"snapshot_date":"Date", "net_worth_inr":"Net Worth INR", "invested_value_inr":"Invested INR", "current_value_inr":"Current INR", "pnl_inr":"P/L INR", "created_at":"Created At"}), use_container_width=True, hide_index=True)
     else:
         st.info("Snapshots begin after first run.")
 

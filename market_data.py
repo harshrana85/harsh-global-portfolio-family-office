@@ -2,6 +2,7 @@
 from __future__ import annotations
 import pandas as pd
 import requests
+from functools import lru_cache
 from io import StringIO
 
 try:
@@ -27,66 +28,68 @@ BOND_MARKS = {
     "US30231GBF81": 0.907560,   # XOM 4.227 2040
 }
 
+MF_SEARCH_ALIASES = {
+    "HDFC Hybrid Equity Fund": "HDFC Hybrid Equity Fund Growth",
+    "HDFC Large Cap Fund": "HDFC Large Cap Fund Growth",
+    "HDFC Mid Cap Opportunities Fund": "HDFC Mid-Cap Opportunities Fund Growth",
+    "HDFC Small Cap Fund": "HDFC Small Cap Fund Growth",
+    "HDFC Corporate Bond Fund": "HDFC Corporate Bond Fund Growth",
+    "HDFC Short Term Debt Fund": "HDFC Short Term Debt Fund Growth",
+    "HDFC Dynamic Bond Fund": "HDFC Dynamic Bond Fund Growth",
+    "HDFC PSU Banking Debt Fund": "HDFC Banking and PSU Debt Fund Growth",
+    "Parag Parikh Flexi Cap Fund": "Parag Parikh Flexi Cap Fund Growth",
+    "Kotak Banking & PSU Fund": "Kotak Banking and PSU Debt Fund Growth",
+    "Kotak Corporate Bond Fund": "Kotak Corporate Bond Fund Growth",
+    "Kotak Short Term Debt Fund": "Kotak Short Duration Fund Growth",
+}
 
-_AMFI_CACHE = None
-
-def _norm_text(s: str) -> str:
-    import re
-    s = str(s or "").lower().replace("&", " and ")
-    s = re.sub(r"[^a-z0-9]+", " ", s)
-    return re.sub(r"\s+", " ", s).strip()
-
-def _amfi_table() -> pd.DataFrame:
-    global _AMFI_CACHE
-    if _AMFI_CACHE is not None:
-        return _AMFI_CACHE
+@lru_cache(maxsize=128)
+def _mf_search_code(query: str) -> str | None:
+    q = MF_SEARCH_ALIASES.get(query.strip(), query.strip())
     try:
-        url = "https://www.amfiindia.com/spages/NAVAll.txt"
-        txt = requests.get(url, timeout=12, headers={"User-Agent":"Mozilla/5.0"}).text
-        rows = []
-        for line in txt.splitlines():
-            parts = line.split(";")
-            if len(parts) >= 6 and parts[0].strip().isdigit():
-                try:
-                    nav = float(parts[4])
-                except Exception:
-                    nav = None
-                rows.append({
-                    "scheme_code": parts[0].strip(),
-                    "scheme_name": parts[3].strip(),
-                    "nav": nav,
-                    "date": parts[5].strip(),
-                })
-        _AMFI_CACHE = pd.DataFrame(rows)
-        if not _AMFI_CACHE.empty:
-            _AMFI_CACHE["norm"] = _AMFI_CACHE["scheme_name"].map(_norm_text)
-        return _AMFI_CACHE
+        r = requests.get("https://api.mfapi.in/mf/search", params={"q": q}, timeout=8)
+        r.raise_for_status()
+        matches = r.json() or []
+        q_words = [w.lower() for w in q.replace("&", "and").split() if len(w) > 2 and w.lower() not in {"fund", "growth", "direct", "plan", "regular"}]
+        best = None
+        best_score = -1
+        for m in matches:
+            name = str(m.get("schemeName", ""))
+            lname = name.lower().replace("&", "and")
+            score = sum(1 for w in q_words if w in lname)
+            if "direct" in lname:
+                score += 1
+            if "growth" in lname:
+                score += 1
+            if score > best_score:
+                best, best_score = m, score
+        return str(best.get("schemeCode")) if best else None
     except Exception:
-        _AMFI_CACHE = pd.DataFrame()
-        return _AMFI_CACHE
+        return None
 
-def _amfi_nav(query: str):
-    q = _norm_text(query)
-    table = _amfi_table()
-    if table.empty or not q:
-        return None, _empty_meta("AMFI unavailable")
-    hits = table[table["norm"].str.contains(q, regex=False, na=False)].copy()
-    if hits.empty:
-        tokens = [t for t in q.split() if len(t) > 2 and t not in {"fund","direct","plan","growth","option"}]
-        if tokens:
-            hits = table[table["norm"].apply(lambda x: all(t in x for t in tokens[:8]))].copy()
-    if hits.empty:
-        return None, _empty_meta("AMFI no match")
-    hits["score"] = hits["norm"].apply(lambda x: (5 if " direct " in f" {x} " else 0) + (5 if " growth " in f" {x} " else 0) + (2 if "regular" not in x else 0))
-    row = hits.sort_values("score", ascending=False).iloc[0]
-    if pd.isna(row["nav"]):
-        return None, _empty_meta("AMFI NAV blank")
-    return float(row["nav"]), {
-        "source_status": f"AMFI NAV {row['date']}",
-        "52w_high": None, "52w_low": None, "volume": None,
-        "day_change": None, "day_change_pct": None,
-    }
-
+def _mf_latest_nav(query_or_code: str):
+    code = str(query_or_code).strip()
+    if not code:
+        return None, _empty_meta("missing MF query")
+    if not code.isdigit():
+        code = _mf_search_code(code) or ""
+    if not code:
+        return None, _empty_meta("MF scheme not found")
+    try:
+        r = requests.get(f"https://api.mfapi.in/mf/{code}/latest", timeout=8)
+        r.raise_for_status()
+        payload = r.json() or {}
+        data = payload.get("data") or []
+        if not data:
+            return None, _empty_meta("MF latest NAV missing")
+        nav = float(data[0].get("nav"))
+        return nav, {
+            "source_status": f"live AMFI NAV via mfapi.in ({code})",
+            "day_change": None, "day_change_pct": None,
+            "52w_high": None, "52w_low": None, "volume": None
+        }
+    except Exception as e:
+        return None, _empty_meta(f"MF NAV fallback: {str(e)[:60]}")
 
 def _empty_meta(error: str = ""):
     return {"52w_high": None, "52w_low": None, "volume": None, "day_change": None, "day_change_pct": None, "source_status": error or "fallback"}
@@ -106,10 +109,10 @@ def safe_price(ticker: str):
     t = str(ticker or "").strip()
     if not t:
         return None, _empty_meta("no ticker")
-    if t.upper().startswith("MF:"):
-        return _amfi_nav(t[3:])
     if t in BOND_MARKS:
         return BOND_MARKS[t], {"source_status":"broker bond mark /100", "day_change":None, "day_change_pct":None, "52w_high":None, "52w_low":None, "volume":None}
+    if t.upper().startswith("MF:"):
+        return _mf_latest_nav(t.split(":", 1)[1])
     if t.upper() == "SGB_PROXY":
         # SGB redemption is linked to grams of gold. Fallback proxy: India gold price per gram.
         # Try Yahoo gold futures USD/oz converted to INR/g; fallback keeps base value.

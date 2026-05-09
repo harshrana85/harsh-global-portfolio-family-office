@@ -35,11 +35,13 @@ def enrich(df: pd.DataFrame, live_prices: dict | None = None, fx: dict | None = 
 
     out["live_rate"] = out["ticker"].map(live_prices)
     out["is_constant"] = out["pricing_mode"].str.lower().eq("constant")
+    out["is_live_mf"] = out["ticker"].str.upper().str.startswith("MF:")
+    out["is_value_level_mf"] = out["is_live_mf"] & out["quantity"].eq(1.0)
 
     # Current rate logic
     # constants stay at fallback; live/proxy use fetched when available; manual fallback otherwise
     out["current_rate"] = np.where(
-        (~out["is_constant"]) & out["live_rate"].notna(),
+        (~out["is_constant"]) & (~out["is_value_level_mf"]) & out["live_rate"].notna(),
         out["live_rate"],
         out["fallback_current_rate"]
     )
@@ -68,6 +70,7 @@ def enrich(df: pd.DataFrame, live_prices: dict | None = None, fx: dict | None = 
 
     out["move_arrow"] = np.where(out["pnl_inr"] > 0, "🟢 ▲", np.where(out["pnl_inr"] < 0, "🔴 ▼", "—"))
     out["price_status"] = np.where(out["is_constant"], "Constant", np.where(out["live_rate"].notna(), "Live/Proxy", "Fallback"))
+    out["price_status"] = np.where(out["is_value_level_mf"] & out["live_rate"].notna(), "Live NAV shown; value fallback", out["price_status"])
     return out
 
 def totals(df: pd.DataFrame):
