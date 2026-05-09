@@ -74,7 +74,7 @@ df = enrich(raw, prices, fx)
 T = totals(df)
 add_snapshot(T["current_value_inr"], T["invested_value_inr"], T["current_value_inr"], T["pnl_inr"])
 
-def _sym(ccy): return {"INR":"₹","USD":"$","EUR":"€","AED":"د.إ"}.get(str(ccy).upper(),"")
+def _sym(ccy): return {"INR":"₹","USD":"$","EUR":"€","AED":"د.إ","GBP":"£"}.get(str(ccy).upper(),"")
 def fmt_native(v, ccy):
     try: return f"{_sym(ccy)}{float(v):,.1f}"
     except Exception: return ""

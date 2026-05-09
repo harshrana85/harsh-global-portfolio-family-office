@@ -3,8 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import numpy as np
 
-DEFAULT_FX = {"USDINR": 94.44, "EURINR": 111.28, "AEDINR": 25.71}
-CURRENCY_SYMBOLS = {"INR":"₹", "USD":"$", "EUR":"€", "AED":"د.إ"}
+DEFAULT_FX = {"USDINR": 94.44, "EURINR": 111.28, "AEDINR": 25.71, "GBPINR": 126.30}
+CURRENCY_SYMBOLS = {"INR":"₹", "USD":"$", "EUR":"€", "AED":"د.إ", "GBP":"£"}
 
 def fx_to_inr(currency: str, fx: dict | None = None) -> float:
     fx = fx or DEFAULT_FX
@@ -13,6 +13,7 @@ def fx_to_inr(currency: str, fx: dict | None = None) -> float:
     if c == "USD": return float(fx.get("USDINR", DEFAULT_FX["USDINR"]))
     if c == "EUR": return float(fx.get("EURINR", DEFAULT_FX["EURINR"]))
     if c == "AED": return float(fx.get("AEDINR", DEFAULT_FX["AEDINR"]))
+    if c == "GBP": return float(fx.get("GBPINR", DEFAULT_FX["GBPINR"]))
     return 1.0
 
 def enrich(df: pd.DataFrame, live_prices: dict | None = None, fx: dict | None = None) -> pd.DataFrame:
@@ -34,6 +35,9 @@ def enrich(df: pd.DataFrame, live_prices: dict | None = None, fx: dict | None = 
         out[c] = pd.to_numeric(out[c], errors="coerce").fillna(0.0)
 
     out["live_rate"] = out["ticker"].map(live_prices)
+    # DFND.L is a GBP-denominated holding. If any provider returns pence instead of pounds, normalise to GBP.
+    dfnd_mask = out["ticker"].str.upper().eq("DFND.L") & out["currency"].str.upper().eq("GBP") & out["live_rate"].notna() & out["live_rate"].gt(100)
+    out.loc[dfnd_mask, "live_rate"] = out.loc[dfnd_mask, "live_rate"] / 100.0
     out["is_constant"] = out["pricing_mode"].str.lower().eq("constant")
     out["is_live_mf"] = out["ticker"].str.upper().str.startswith("MF:")
     out["is_value_level_mf"] = out["is_live_mf"] & out["quantity"].eq(1.0)

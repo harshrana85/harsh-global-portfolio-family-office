@@ -10,7 +10,7 @@ try:
 except Exception:
     yf = None
 
-DEFAULT_FX = {"USDINR": 94.44, "EURINR": 111.28, "AEDINR": 25.71}
+DEFAULT_FX = {"USDINR": 94.44, "EURINR": 111.28, "AEDINR": 25.71, "GBPINR": 126.30}
 
 INDEX_TICKERS = {
     "Nifty 50": "^NSEI", "Nifty Bank": "^NSEBANK", "Sensex": "^BSESN", "India VIX": "^INDIAVIX",
@@ -29,23 +29,32 @@ BOND_MARKS = {
 }
 
 MF_SEARCH_ALIASES = {
-    "HDFC Hybrid Equity Fund": "HDFC Hybrid Equity Fund Growth",
-    "HDFC Large Cap Fund": "HDFC Large Cap Fund Growth",
-    "HDFC Mid Cap Opportunities Fund": "HDFC Mid-Cap Opportunities Fund Growth",
-    "HDFC Small Cap Fund": "HDFC Small Cap Fund Growth",
-    "HDFC Corporate Bond Fund": "HDFC Corporate Bond Fund Growth",
-    "HDFC Short Term Debt Fund": "HDFC Short Term Debt Fund Growth",
-    "HDFC Dynamic Bond Fund": "HDFC Dynamic Bond Fund Growth",
-    "HDFC PSU Banking Debt Fund": "HDFC Banking and PSU Debt Fund Growth",
-    "Parag Parikh Flexi Cap Fund": "Parag Parikh Flexi Cap Fund Growth",
-    "Kotak Banking & PSU Fund": "Kotak Banking and PSU Debt Fund Growth",
-    "Kotak Corporate Bond Fund": "Kotak Corporate Bond Fund Growth",
-    "Kotak Short Term Debt Fund": "Kotak Short Duration Fund Growth",
+    # canonical keys from portfolio_seed.py -> mfapi search text
+    "HDFC Hybrid Equity Fund": "HDFC Hybrid Equity Fund Regular Plan Growth",
+    "HDFC Large Cap Fund": "HDFC Top 100 Fund Regular Plan Growth",
+    "HDFC Mid Cap Opportunities Fund": "HDFC Mid-Cap Opportunities Fund Regular Plan Growth",
+    "HDFC Small Cap Fund": "HDFC Small Cap Fund Regular Plan Growth",
+    "HDFC Corporate Bond Fund": "HDFC Corporate Bond Fund Regular Plan Growth",
+    "HDFC Short Term Debt Fund": "HDFC Short Term Debt Fund Regular Plan Growth",
+    "HDFC Dynamic Bond Fund": "HDFC Dynamic Bond Fund Regular Plan Growth",
+    "HDFC PSU Banking Debt Fund": "HDFC Banking and PSU Debt Fund Regular Plan Growth",
+    "Parag Parikh Flexi Cap Fund": "Parag Parikh Flexi Cap Fund Regular Plan Growth",
+    "Kotak Banking & PSU Fund": "Kotak Banking and PSU Debt Fund Regular Plan Growth",
+    "Kotak Corporate Bond Fund": "Kotak Corporate Bond Fund Regular Plan Growth",
+    "Kotak Short Term Debt Fund": "Kotak Short Duration Fund Regular Plan Growth",
 }
+
+def _normalise_mf_query(query: str) -> str:
+    q = str(query or "").strip()
+    q = q.replace("MF:", "")
+    q = q.replace("HDFC Mutual Fund ", "HDFC ").replace("Kotak Mutual Fund ", "Kotak ")
+    q = q.replace("Parag Parikh Flexi Cap Fund Parikh Flexi Cap Fund", "Parag Parikh Flexi Cap Fund")
+    q = q.split(" - ")[0].strip()
+    return MF_SEARCH_ALIASES.get(q, q)
 
 @lru_cache(maxsize=128)
 def _mf_search_code(query: str) -> str | None:
-    q = MF_SEARCH_ALIASES.get(query.strip(), query.strip())
+    q = _normalise_mf_query(query)
     try:
         r = requests.get("https://api.mfapi.in/mf/search", params={"q": q}, timeout=8)
         r.raise_for_status()
@@ -57,10 +66,12 @@ def _mf_search_code(query: str) -> str | None:
             name = str(m.get("schemeName", ""))
             lname = name.lower().replace("&", "and")
             score = sum(1 for w in q_words if w in lname)
-            if "direct" in lname:
-                score += 1
             if "growth" in lname:
+                score += 2
+            if "regular" in lname:
                 score += 1
+            if "direct" in lname and "regular" in q.lower():
+                score -= 1
             if score > best_score:
                 best, best_score = m, score
         return str(best.get("schemeCode")) if best else None
@@ -151,10 +162,13 @@ def get_fx_rates(defaults: dict | None = None) -> dict:
     rates = dict(defaults or DEFAULT_FX)
     rates["USDINR"] = 94.44
     rates["USD_SOURCE"] = "approved base rate"
-    # EUR can be live/fallback; not used materially unless EUR assets added.
+    # EUR/GBP can be live/fallback; GBP is required for DFND.L.
     eur, _ = safe_price("EURINR=X")
+    gbp, _ = safe_price("GBPINR=X")
     rates["EURINR"] = eur if eur else rates.get("EURINR", DEFAULT_FX["EURINR"])
+    rates["GBPINR"] = gbp if gbp else rates.get("GBPINR", DEFAULT_FX["GBPINR"])
     rates["EUR_SOURCE"] = "live Yahoo" if eur else "fallback"
+    rates["GBP_SOURCE"] = "live Yahoo" if gbp else "fallback"
     return rates
 
 def get_market_dashboard(default_fx: dict | None = None) -> pd.DataFrame:
