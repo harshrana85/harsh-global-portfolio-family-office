@@ -1,16 +1,8 @@
-/* Harsh Global Portfolio - premium family office visual layer */
-@keyframes floatUp { from {opacity:0; transform:translateY(12px)} to {opacity:1; transform:translateY(0)} }
-@keyframes softPulse { 0%,100% {filter:drop-shadow(0 0 0 rgba(22,131,74,.0))} 50% {filter:drop-shadow(0 0 14px rgba(22,131,74,.25))} }
-.stApp { background: radial-gradient(circle at 10% 10%, rgba(29,78,216,.08), transparent 28%), linear-gradient(180deg,#f8fafc 0%,#eef2f7 100%) !important; }
-.block-container { max-width: 1500px; }
-.card { animation: floatUp .45s ease both; border-top: 3px solid rgba(22,131,74,.75) !important; }
-.card:nth-child(2n) { border-top-color: rgba(185,139,47,.75) !important; }
-.metric-value { letter-spacing: -.02em; }
-.good, .bull { color:#0f8a4b !important; }
-.bad, .bear { color:#d12f45 !important; }
-.fo-watermark:before { color:rgba(15,23,42,.055) !important; font-size:50px !important; }
-[data-testid="stSidebar"] { background: linear-gradient(180deg,#e9eef5,#f8fafc) !important; }
-[data-testid="stDataFrame"] { border-radius: 14px; overflow:hidden; border:1px solid #dfe5ee; }
-thead tr th { background:#e8edf5 !important; color:#233046 !important; font-weight:800 !important; }
-.news-card { animation: floatUp .35s ease both; }
-.bond-live-badge { color:#065f46; background:#d1fae5; border-radius:999px; padding:3px 8px; font-weight:700; }
+
+:root{--green:#16834a;--red:#c9342f;--gold:#c7a74a;--ink:#172033;}
+.block-container{padding-top:1rem;}
+[data-testid="stSidebar"]{background:#eef2f5;border-right:1px solid #d9dee8;}
+[data-testid="stDataFrame"]{font-size:11px!important;}
+thead tr th{font-size:11px!important;background:#eef2f6!important;}
+.card{animation:fadeUp .45s ease both;}
+@keyframes fadeUp{from{opacity:.2;transform:translateY(8px)}to{opacity:1;transform:none}}

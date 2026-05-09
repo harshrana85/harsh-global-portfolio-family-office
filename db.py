@@ -2,7 +2,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 import pandas as pd
-from portfolio_seed import HOLDINGS, COLUMNS, DEFAULT_FX
+from portfolio_seed import HOLDINGS, COLUMNS, DEFAULT_FX, SEED_VERSION
 
 DB_PATH = Path(__file__).with_name("portfolio.db")
 
@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS snapshots (
     pnl_inr REAL NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS app_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 def connect():
@@ -49,10 +53,14 @@ def init_db(force: bool = False):
     con = connect()
     con.executescript(SCHEMA)
     cur = con.execute("SELECT COUNT(*) FROM holdings")
-    if cur.fetchone()[0] == 0:
+    meta = con.execute("SELECT value FROM app_meta WHERE key='seed_version'").fetchone()
+    needs_seed = (cur.fetchone()[0] == 0) or (meta is None) or (meta[0] != SEED_VERSION)
+    if needs_seed:
+        con.execute("DELETE FROM holdings")
         df = pd.DataFrame(HOLDINGS, columns=COLUMNS)
         df["active"] = 1
         df.to_sql("holdings", con, if_exists="append", index=False)
+        con.execute("INSERT OR REPLACE INTO app_meta(key,value) VALUES ('seed_version', ?)", (SEED_VERSION,))
     for pair, rate in DEFAULT_FX.items():
         con.execute("INSERT OR IGNORE INTO fx_rates(pair, rate, source) VALUES (?, ?, ?)", (pair, rate, "XE fallback/manual"))
     con.commit()

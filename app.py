@@ -33,14 +33,6 @@ thead tr th { background-color:#eef2f6 !important; font-size:11px !important; }
 <div class="fo-watermark"></div>
 """
 st.markdown(CSS, unsafe_allow_html=True)
-# Optional richer visual layer from assets/style.css. App works even if assets are missing.
-try:
-    from pathlib import Path as _Path
-    _style = _Path(__file__).with_name("assets").joinpath("style.css")
-    if _style.exists():
-        st.markdown(f"<style>{_style.read_text()}</style>", unsafe_allow_html=True)
-except Exception:
-    pass
 
 PASSWORD = st.secrets.get("APP_PASSWORD", os.environ.get("APP_PASSWORD", "Harsh@1985"))
 
@@ -68,7 +60,7 @@ def live_price_map(tickers):
     d = {}
     meta = {}
     for t in tickers:
-        if not t or str(t).upper() in ["SGB"] or len(str(t)) > 18:
+        if not t:
             continue
         p, m = safe_price(str(t).strip())
         if p:
@@ -82,17 +74,16 @@ def fx_cached():
 
 raw = get_holdings()
 live_fx = fx_cached()
-# Clean client view: no FX / MTM toggles shown.
-# Valuation uses your base FX assumptions to keep gross net worth aligned with your structure.
-# Indian listed shares and identified US bonds are marked automatically when reliable prices are available.
-fx = DEFAULT_FX
+# Live FX and live MTM are automatic now; no confusing sidebar toggles.
+fx = live_fx
 mark_to_market = True
-# Fetch data for listed equities/ETFs, Indian shares and identified US bonds. FDs, bank balances and properties stay constant unless edited.
+
+# Fetch all meaningful identifiers: Yahoo tickers, MF: AMFI queries, SGB proxy, ISIN bond marks.
 def valid_fetch_ticker(t):
     t = str(t or "").strip()
-    if not t or t.upper() in {"SGB", "NA", "N/A"}:
+    if not t or t.upper() in {"NA", "N/A"}:
         return False
-    return len(t) <= 16
+    return True
 fetchable = [t for t in raw["ticker"].dropna().unique() if valid_fetch_ticker(t)]
 prices, meta_map = live_price_map(tuple(fetchable))
 df = enrich(raw, prices, fx, mark_to_market=mark_to_market)
@@ -107,8 +98,8 @@ page = st.sidebar.radio("Navigation", [
 st.sidebar.divider()
 st.sidebar.metric("Net Worth", fmt_money(T["current_value_inr"]))
 st.sidebar.metric("P/L", fmt_money(T["pnl_inr"]), f"{T['pnl_inr']/max(abs(T['invested_value_inr']),1):.1%}")
-st.sidebar.caption(f"Valuation FX: $1 = ₹{fx.get('USDINR', DEFAULT_FX['USDINR']):.1f} | €1 = ₹{fx.get('EURINR', DEFAULT_FX['EURINR']):.1f}")
-st.sidebar.caption(f"Live FX display: $1 = ₹{live_fx.get('USDINR', DEFAULT_FX['USDINR']):.1f} | €1 = ₹{live_fx.get('EURINR', DEFAULT_FX['EURINR']):.1f}")
+st.sidebar.caption(f"Live FX: $1 = ₹{live_fx.get('USDINR', DEFAULT_FX['USDINR']):.1f} | €1 = ₹{live_fx.get('EURINR', DEFAULT_FX['EURINR']):.1f}")
+st.sidebar.caption("Live MTM: automatic for stocks, ETFs, MF NAV, SGB proxy and marked US bonds")
 
 DISPLAY_COLS = ["move_arrow", "portfolio", "asset_class", "sub_class", "name", "ticker", "currency", "quantity", "invested_rate", "live_rate", "current_rate", "invested_value", "current_value", "current_value_inr", "pnl_inr", "pnl_pct", "live_move_pct", "expected_return_pct", "yield_dividend_pct", "total_return_yield_inr", "price_status", "valuation_status"]
 
@@ -213,7 +204,7 @@ def format_currency_exposure(by_ccy: pd.DataFrame) -> pd.DataFrame:
 
 if page == "Dashboard":
     st.title("Harsh Global Portfolio - Family Office")
-    st.caption("Professional consolidated dashboard · INR base · automatic live marks where reliable · gross values aligned to your family-office structure")
+    st.caption("Professional consolidated dashboard · INR base · live market/FX display · valuation stays anchored unless live MTM / live FX toggles are enabled")
     c1,c2,c3,c4 = st.columns(4)
     c1.markdown(f"<div class='card'><div class='metric-title'>Net Worth Today</div><div class='metric-value'>{fmt_money(T['current_value_inr'])}</div></div>", unsafe_allow_html=True)
     pnl_cls = "good" if T["pnl_inr"] >= 0 else "bad"
@@ -235,7 +226,7 @@ if page == "Dashboard":
     top = df.sort_values("current_value_inr", ascending=False).head(12)
     st.dataframe(display_table(top, ["move_arrow","name","asset_class","currency","current_value","current_value_inr","pnl_inr","live_rate","live_move_pct","yield_dividend_pct","price_status"], add_total=False), use_container_width=True, hide_index=True)
     with st.expander("Data fetch status / why some prices are manual"):
-        st.write("Live prices are fetched automatically where reliable. Indian listed shares are marked using NSE/Yahoo symbols. Identified US bonds are marked from the bond-price table you provided. US equity value positions stay at submitted gross value until actual share quantities are entered, so net worth does not jump incorrectly.")
+        st.write("Live prices are fetched automatically. Mutual funds use AMFI NAV × units, SGB uses live gold INR/gram proxy × 160 units, listed shares/ETFs use Yahoo Finance, and the four USD bonds use your latest broker marks. Fixed assets, FDs, bank balances, Oman/GASCBM and real estate stay constant.")
         st.dataframe(df[["name","ticker","portfolio","asset_class","quantity","live_rate","move_arrow","live_move_pct","price_status","valuation_status","data_source"]], use_container_width=True)
 
 elif page == "Indian Portfolio":

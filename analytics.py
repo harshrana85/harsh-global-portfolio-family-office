@@ -13,7 +13,7 @@ def fx_to_inr(currency: str, fx: dict) -> float:
     if c == "AED": return float(fx.get("AEDINR", DEFAULT_FX["AEDINR"]))
     return 1.0
 
-def enrich(df: pd.DataFrame, live_prices: dict | None = None, fx: dict | None = None, mark_to_market: bool = False) -> pd.DataFrame:
+def enrich(df: pd.DataFrame, live_prices: dict | None = None, fx: dict | None = None, mark_to_market: bool = True) -> pd.DataFrame:
     fx = fx or DEFAULT_FX
     live_prices = live_prices or {}
     out = df.copy()
@@ -25,22 +25,23 @@ def enrich(df: pd.DataFrame, live_prices: dict | None = None, fx: dict | None = 
     out["expected_return_pct"] = pd.to_numeric(out["expected_return_pct"], errors="coerce").fillna(0)
     out["yield_dividend_pct"] = pd.to_numeric(out["yield_dividend_pct"], errors="coerce").fillna(0)
 
-    # Conservative default: portfolio P/L remains anchored to user supplied current values.
-    # Live rates are displayed and arrowed; MTM affects current value only when user toggles it on.
-    listed_india_equity = (
-        out["portfolio"].astype(str).str.upper().eq("INDIA") &
-        out["asset_class"].astype(str).str.lower().eq("equity") &
-        out["live_rate"].notna() &
-        (out["quantity"] > 1)
+    asset = out["asset_class"].astype(str).str.lower()
+    sub = out["sub_class"].astype(str).str.lower()
+    tick = out["ticker"].astype(str).str.upper()
+
+    # Live valuation rules:
+    # - Indian & US listed equities/ETFs update when valid live price is fetched and quantity is meaningful.
+    # - Mutual funds update automatically from AMFI NAV using units.
+    # - SGB updates automatically from live gold INR/gram proxy using 160 units.
+    # - Broker-marked US bonds update from price/100 feed if identifier is present.
+    is_mf = asset.eq("mutual fund")
+    is_sgb = tick.eq("SGB") | sub.str.contains("sovereign gold", na=False)
+    is_listed = asset.isin(["equity", "etf"])
+    is_bond_mark = asset.eq("fixed income") & out["live_rate"].notna() & out["ticker"].str.upper().str.startswith("US")
+    allowed = out["live_rate"].notna() & (
+        is_mf | is_sgb | is_bond_mark | (is_listed & (out["quantity"] > 0))
     )
-    live_bond_mark = (
-        out["portfolio"].astype(str).str.upper().eq("US/GLOBAL") &
-        out["asset_class"].astype(str).str.lower().eq("fixed income") &
-        out["live_rate"].notna() &
-        (out["quantity"] > 1000)
-    )
-    allowed = listed_india_equity | live_bond_mark
-    out["live_valuation_allowed"] = allowed if mark_to_market else False
+    out["live_valuation_allowed"] = allowed if mark_to_market else (is_mf | is_sgb | is_bond_mark) & out["live_rate"].notna()
     out["current_rate"] = np.where(out["live_valuation_allowed"], out["live_rate"], out["fallback_current_rate"])
     out["invested_value"] = out["quantity"] * out["invested_rate"]
     out["current_value"] = out["quantity"] * out["current_rate"]
@@ -55,8 +56,8 @@ def enrich(df: pd.DataFrame, live_prices: dict | None = None, fx: dict | None = 
     out["expected_return_amount_inr"] = out["current_value_inr"] * out["expected_return_pct"]
     out["yield_dividend_amount_inr"] = out["current_value_inr"] * out["yield_dividend_pct"]
     out["total_return_yield_inr"] = out["expected_return_amount_inr"] + out["yield_dividend_amount_inr"]
-    out["price_status"] = np.where(out["live_rate"].notna(), "Live/marked", "Manual/constant")
-    out["valuation_status"] = np.where(out["live_valuation_allowed"], "MTM live", "User value")
+    out["price_status"] = np.where(out["live_rate"].notna(), "Live fetched", "Manual/constant")
+    out["valuation_status"] = np.where(out["live_valuation_allowed"], "Live applied", "Manual value")
     return out
 
 def totals(df: pd.DataFrame):

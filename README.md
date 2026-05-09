@@ -1,26 +1,25 @@
 # Harsh Global Portfolio - Family Office
 
-Clean Streamlit family-office dashboard.
+Final live patch.
 
-## Deploy
-Main file path: `app.py`
+## Main file path
+`app.py`
 
-Password secret:
+## Password secret
 ```toml
 APP_PASSWORD = "Harsh@1985"
 ```
 
-## What is live / marked
-- Indian listed shares: live via Yahoo/NSE symbols.
-- Identified US bonds: marked from the ISIN bond-price table provided by the user.
-- Mutual funds: statement units and NAV fallback; AMFI integration can be added with exact AMFI scheme codes.
-- FDs, bank balances, real estate, physical gold, Oman and GASCBM: constant/fixed-yield unless edited.
+## Live pricing now included
+- Indian stocks / ETFs: Yahoo Finance.
+- Indian mutual funds: AMFI latest NAV multiplied by actual units from statements.
+- Sovereign Gold Bond: live gold INR/gram proxy multiplied by 160 units.
+- US bonds: broker marks supplied by user mapped by ISIN.
+- FX: live USDINR and EURINR.
 
-## Fixed yield assumptions
-- Indian FDs: 6.5%
-- Govt of India securities: 7.2%
-- UAE banks: 1.0%
-
-## Do not upload
-- `.pyc`
-- `__pycache__`
+## Manual / constant
+- Real estate
+- FDs
+- bank balances
+- physical gold unless edited
+- Oman and GASCBM bonds unless updated manually
