@@ -21,10 +21,10 @@ INDEX_TICKERS = {
 
 # Manual/live broker marks supplied by user. Clean price per 100 face.
 BOND_MARKS = {
-    "US04686E4K56": 98.8070,   # ATH 4.721 2029
-    "US912810FT08": 101.7660,  # US T 4.5 2036
-    "US91282CPE56": 99.46995,  # US T 3.5 2027
-    "US30231GBF81": 90.7560,   # XOM 4.227 2040
+    "US04686E4K56": 0.988070,   # ATH 4.721 2029
+    "US912810FT08": 1.017660,  # US T 4.5 2036
+    "US91282CPE56": 0.9946995,  # US T 3.5 2027
+    "US30231GBF81": 0.907560,   # XOM 4.227 2040
 }
 
 def _empty_meta(error: str = ""):
@@ -46,7 +46,7 @@ def safe_price(ticker: str):
     if not t:
         return None, _empty_meta("no ticker")
     if t in BOND_MARKS:
-        return BOND_MARKS[t], {"source_status":"broker bond mark", "day_change":None, "day_change_pct":None, "52w_high":None, "52w_low":None, "volume":None}
+        return BOND_MARKS[t], {"source_status":"broker bond mark /100", "day_change":None, "day_change_pct":None, "52w_high":None, "52w_low":None, "volume":None}
     if t.upper() == "SGB_PROXY":
         # SGB redemption is linked to grams of gold. Fallback proxy: India gold price per gram.
         # Try Yahoo gold futures USD/oz converted to INR/g; fallback keeps base value.

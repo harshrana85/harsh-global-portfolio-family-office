@@ -13,3 +13,10 @@ Corrected accounting package:
 
 Main file path: app.py
 Password secret: APP_PASSWORD = "Harsh@1985"
+
+
+V2 fixes:
+- US bond broker marks scaled correctly: 98.807 = 0.98807 in valuation.
+- MF invested total aligned to submitted structure: ₹38,012,429.
+- HDFC Flexi ₹300k excluded from base total because submitted HDFC total excludes it.
+- USD/INR remains approved at ₹94.44, so USD asset INR value moves versus the older screenshot.
