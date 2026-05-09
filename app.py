@@ -127,7 +127,7 @@ if page == "Dashboard":
     st.title("Harsh Global Portfolio - Family Office")
     st.caption("Cost basis separated from live current value · USD/INR ₹94.44 · no manual toggles")
     mood = "Bullish" if T["pnl_inr"] >= 0 else "Bearish"
-    st.markdown(f"<div class='tape'><span>🐂 NIFTY · S&P 500 · NASDAQ · DOW · GOLD · BRENT · USD/INR ₹94.44 · PORTFOLIO MOOD: {mood} 🐻</span></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='tape'><span>🐂 NIFTY · S&P 500 · NASDAQ · DOW · GOLD · BRENT · USD/INR ₹94.44 · AMFI NAV · PORTFOLIO MOOD: {mood} 🐻</span></div>", unsafe_allow_html=True)
     c1,c2,c3,c4 = st.columns(4)
     c1.markdown(f"<div class='card'><div class='metric-title'>Current Net Worth</div><div class='metric-value'>{fmt_inr(T['current_value_inr'])}</div></div>", unsafe_allow_html=True)
     c2.markdown(f"<div class='card'><div class='metric-title'>Invested / Base</div><div class='metric-value'>{fmt_inr(T['invested_value_inr'])}</div></div>", unsafe_allow_html=True)
@@ -158,7 +158,7 @@ elif page == "Indian Portfolio":
 elif page == "US Portfolio":
     st.title("US / Global Portfolio")
     us = df[df["portfolio"].eq("US/GLOBAL")]
-    for label, filt in [("All",None),("Equity","Equity"),("ETF","ETF"),("Fixed Income","Fixed Income"),("Cash","Cash"),("Real Estate","Real Estate"),("Liability","Liability")]:
+    for label, filt in [("All",None),("Equity","Equity"),("ETF","ETF"),("Fixed Income","Fixed Income"),("Cash","Cash"),("Mixed Asset","Mixed Asset"),("Real Estate","Real Estate"),("Liability","Liability")]:
         with st.expander(label, expanded=(label=="All")):
             table(label, us if filt is None else us[us["asset_class"].eq(filt)])
 
@@ -170,7 +170,23 @@ elif page == "Returns & Yield":
         ret[c] = ret[c].apply(fmt_inr)
     for c in ["expected_return_pct","yield_dividend_pct"]:
         ret[c] = ret[c].apply(fmt_pct)
+    total_row = {
+        "portfolio": "TOTAL",
+        "asset_class": "",
+        "name": "Portfolio Total",
+        "current_value_inr": fmt_inr(df["current_value_inr"].sum()),
+        "expected_return_pct": "",
+        "expected_return_amount_inr": fmt_inr(df["expected_return_amount_inr"].sum()),
+        "yield_dividend_pct": "",
+        "yield_dividend_amount_inr": fmt_inr(df["yield_dividend_amount_inr"].sum()),
+        "total_return_yield_inr": fmt_inr(df["total_return_yield_inr"].sum()),
+    }
+    ret = pd.concat([ret, pd.DataFrame([total_row])], ignore_index=True)
     st.dataframe(ret.rename(columns={"portfolio":"Portfolio","asset_class":"Asset","name":"Holding","current_value_inr":"Current INR","expected_return_pct":"Return %","expected_return_amount_inr":"Return ₹","yield_dividend_pct":"Yield/Div %","yield_dividend_amount_inr":"Yield/Div ₹","total_return_yield_inr":"Total ₹"}), use_container_width=True, hide_index=True, height=650)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Expected Return Total", fmt_inr(df["expected_return_amount_inr"].sum()))
+    c2.metric("Dividend / Yield Total", fmt_inr(df["yield_dividend_amount_inr"].sum()))
+    c3.metric("Return + Yield Total", fmt_inr(df["total_return_yield_inr"].sum()))
 
 elif page == "Consolidated Portfolio":
     st.title("Consolidated Portfolio")
@@ -206,9 +222,14 @@ elif page == "Net Worth Growth":
     snaps = get_snapshots()
     if not snaps.empty:
         fig = px.line(snaps, x="snapshot_date", y="net_worth_inr", markers=True, title="Daily Net Worth")
-        fig.update_layout(height=500, yaxis_tickprefix="₹", paper_bgcolor="rgba(0,0,0,0)")
+        fig.update_traces(hovertemplate="Date: %{x}<br>Net Worth: ₹%{y:,.1f}<extra></extra>")
+        fig.update_layout(height=500, yaxis_tickprefix="₹", yaxis_tickformat=",.1f", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(snaps, use_container_width=True)
+        snap_show = snaps.copy()
+        for c in ["net_worth_inr","invested_value_inr","current_value_inr","pnl_inr"]:
+            if c in snap_show.columns:
+                snap_show[c] = snap_show[c].apply(fmt_inr)
+        st.dataframe(snap_show, use_container_width=True, hide_index=True)
     else:
         st.info("Snapshots begin after first run.")
 

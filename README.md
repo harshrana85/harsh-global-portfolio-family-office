@@ -20,3 +20,9 @@ V2 fixes:
 - MF invested total aligned to submitted structure: ₹38,012,429.
 - HDFC Flexi ₹300k excluded from base total because submitted HDFC total excludes it.
 - USD/INR remains approved at ₹94.44, so USD asset INR value moves versus the older screenshot.
+
+V3 fixes:
+- Returns & Yield page shows total row and summary metrics.
+- US Portfolio has Mixed Asset tab for SIP.
+- ICICI/HDFC/Kotak/Parag mutual funds use AMFI live NAV through MF: tickers.
+- Net Worth Growth chart/table shows ₹ symbols.

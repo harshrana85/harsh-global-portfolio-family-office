@@ -27,6 +27,67 @@ BOND_MARKS = {
     "US30231GBF81": 0.907560,   # XOM 4.227 2040
 }
 
+
+_AMFI_CACHE = None
+
+def _norm_text(s: str) -> str:
+    import re
+    s = str(s or "").lower().replace("&", " and ")
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+def _amfi_table() -> pd.DataFrame:
+    global _AMFI_CACHE
+    if _AMFI_CACHE is not None:
+        return _AMFI_CACHE
+    try:
+        url = "https://www.amfiindia.com/spages/NAVAll.txt"
+        txt = requests.get(url, timeout=12, headers={"User-Agent":"Mozilla/5.0"}).text
+        rows = []
+        for line in txt.splitlines():
+            parts = line.split(";")
+            if len(parts) >= 6 and parts[0].strip().isdigit():
+                try:
+                    nav = float(parts[4])
+                except Exception:
+                    nav = None
+                rows.append({
+                    "scheme_code": parts[0].strip(),
+                    "scheme_name": parts[3].strip(),
+                    "nav": nav,
+                    "date": parts[5].strip(),
+                })
+        _AMFI_CACHE = pd.DataFrame(rows)
+        if not _AMFI_CACHE.empty:
+            _AMFI_CACHE["norm"] = _AMFI_CACHE["scheme_name"].map(_norm_text)
+        return _AMFI_CACHE
+    except Exception:
+        _AMFI_CACHE = pd.DataFrame()
+        return _AMFI_CACHE
+
+def _amfi_nav(query: str):
+    q = _norm_text(query)
+    table = _amfi_table()
+    if table.empty or not q:
+        return None, _empty_meta("AMFI unavailable")
+    hits = table[table["norm"].str.contains(q, regex=False, na=False)].copy()
+    if hits.empty:
+        tokens = [t for t in q.split() if len(t) > 2 and t not in {"fund","direct","plan","growth","option"}]
+        if tokens:
+            hits = table[table["norm"].apply(lambda x: all(t in x for t in tokens[:8]))].copy()
+    if hits.empty:
+        return None, _empty_meta("AMFI no match")
+    hits["score"] = hits["norm"].apply(lambda x: (5 if " direct " in f" {x} " else 0) + (5 if " growth " in f" {x} " else 0) + (2 if "regular" not in x else 0))
+    row = hits.sort_values("score", ascending=False).iloc[0]
+    if pd.isna(row["nav"]):
+        return None, _empty_meta("AMFI NAV blank")
+    return float(row["nav"]), {
+        "source_status": f"AMFI NAV {row['date']}",
+        "52w_high": None, "52w_low": None, "volume": None,
+        "day_change": None, "day_change_pct": None,
+    }
+
+
 def _empty_meta(error: str = ""):
     return {"52w_high": None, "52w_low": None, "volume": None, "day_change": None, "day_change_pct": None, "source_status": error or "fallback"}
 
@@ -45,6 +106,8 @@ def safe_price(ticker: str):
     t = str(ticker or "").strip()
     if not t:
         return None, _empty_meta("no ticker")
+    if t.upper().startswith("MF:"):
+        return _amfi_nav(t[3:])
     if t in BOND_MARKS:
         return BOND_MARKS[t], {"source_status":"broker bond mark /100", "day_change":None, "day_change_pct":None, "52w_high":None, "52w_low":None, "volume":None}
     if t.upper() == "SGB_PROXY":
