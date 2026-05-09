@@ -50,6 +50,30 @@ MF_SCHEME_CODE_MAP = {
     "Kotak Bond Short Term Fund": "119739",
 }
 
+
+# Official ISINs from uploaded AMC statements. AMFI NAVAll contains ISIN columns,
+# so resolving by ISIN is more stable than fuzzy names or third-party search.
+MF_ISIN_MAP = {
+    "HDFC Hybrid Equity Fund": "INF179K01FK4",
+    "HDFC Large Cap Fund": "INF179K01YV8",
+    "HDFC Flexi Cap Fund": "INF179K01UT0",
+    "HDFC Mid Cap Opportunities Fund": "INF179K01XQ0",
+    "HDFC Mid Cap Fund": "INF179K01XQ0",
+    "HDFC Small Cap Fund": "INF179KA1RW5",
+    "HDFC Corporate Bond Fund": "INF179K01XD8",
+    "HDFC Short Term Debt Fund": "INF179K01YM7",
+    "HDFC Dynamic Bond Fund": "INF179K01WB4",
+    "HDFC Dynamic Debt Fund": "INF179K01WB4",
+    "HDFC PSU Banking Debt Fund": "INF179KA1IZ7",
+    "HDFC Banking and PSU Debt Fund": "INF179KA1IZ7",
+    "Parag Parikh Flexi Cap Fund": "INF879O01027",
+    "Kotak Banking & PSU Fund": "INF174K01KH7",
+    "Kotak Banking and PSU Debt Fund": "INF174K01KH7",
+    "Kotak Corporate Bond Fund": "INF178L01BY0",
+    "Kotak Short Term Debt Fund": "INF174K01JI7",
+    "Kotak Bond Short Term Fund": "INF174K01JI7",
+}
+
 MF_SEARCH_ALIASES = {
     # canonical keys from portfolio_seed.py -> official Direct/Growth scheme names/search text
     "HDFC Hybrid Equity Fund": "HDFC Hybrid Equity Fund - Direct Plan - Growth Option",
@@ -103,8 +127,9 @@ MF_NAME_SYNONYMS = {
 }
 
 _AMFI_NAV_URLS = [
-    "https://www.amfiindia.com/spages/NAVAll.txt",
-    "https://www.amfiindia.com/spages/NAVOpen.txt",
+    "https://www.amfiindia.com/spages/NAVAll.txt?t=1",
+    "https://www.amfiindia.com/spages/NAVOpen.txt?t=1",
+    "http://www.amfiindia.com/spages/NAVAll.txt?t=1",
 ]
 
 def _mf_clean_name(x: str) -> str:
@@ -170,7 +195,7 @@ def _amfi_nav_rows() -> list[dict]:
                 parts = line.split(";")
                 if len(parts) >= 6 and parts[0].strip().isdigit():
                     try:
-                        rows.append({"code": parts[0].strip(), "name": parts[3].strip(), "nav": float(parts[4]), "date": parts[5].strip()})
+                        rows.append({"code": parts[0].strip(), "isin1": parts[1].strip(), "isin2": parts[2].strip(), "name": parts[3].strip(), "nav": float(parts[4]), "date": parts[5].strip()})
                     except Exception:
                         pass
             if rows:
@@ -178,6 +203,39 @@ def _amfi_nav_rows() -> list[dict]:
         except Exception:
             continue
     return []
+
+
+def _mf_isin_for_query(query: str) -> str | None:
+    q0 = str(query or "").replace("MF:", "").strip()
+    q0 = q0.split(" - ")[0].strip()
+    candidates = [q0, _normalise_mf_query(query)] + _mf_query_candidates(query)
+    clean_map = {_mf_clean_name(k): v for k, v in MF_ISIN_MAP.items()}
+    for c in candidates:
+        if not c:
+            continue
+        if c in MF_ISIN_MAP:
+            return MF_ISIN_MAP[c]
+        cleaned = _mf_clean_name(c)
+        if cleaned in clean_map:
+            return clean_map[cleaned]
+        for k, v in clean_map.items():
+            if cleaned and (cleaned in k or k in cleaned):
+                return v
+    return None
+
+def _amfi_latest_nav_by_code_or_isin(code: str | None = None, isin: str | None = None):
+    rows = _amfi_nav_rows()
+    if not rows:
+        return None, _empty_meta("AMFI NAV unavailable")
+    code = str(code or "").strip()
+    isin = str(isin or "").strip().upper()
+    for row in rows:
+        if code and row.get("code") == code:
+            return row["nav"], {"source_status": f"live AMFI official ({row['code']}) {row['date']}", "day_change": None, "day_change_pct": None, "52w_high": None, "52w_low": None, "volume": None}
+    for row in rows:
+        if isin and isin in {str(row.get("isin1", "")).upper(), str(row.get("isin2", "")).upper()}:
+            return row["nav"], {"source_status": f"live AMFI official ISIN {isin} ({row['code']}) {row['date']}", "day_change": None, "day_change_pct": None, "52w_high": None, "52w_low": None, "volume": None}
+    return None, _empty_meta("AMFI code/ISIN not found")
 
 def _amfi_latest_nav_by_name(query: str):
     rows = _amfi_nav_rows()
@@ -198,9 +256,9 @@ def _amfi_latest_nav_by_name(query: str):
             nm = _mf_clean_name(row["name"])
             score = sum(5 for token in words if token in nm)
             low = row["name"].lower()
-            if "regular" in low: score += 5
+            if "direct" in low: score += 10
             if "growth" in low: score += 5
-            if "direct" in low: score -= 20
+            if "regular" in low: score -= 20
             if any(x in low for x in ["idcw", "dividend", "payout", "reinvestment"]): score -= 10
             if score > best_score:
                 best, best_score = row, score
@@ -224,9 +282,9 @@ def _mf_search_code(query: str) -> str | None:
                 score = sum(2 for w in q_words if w in lname)
                 if "growth" in lname:
                     score += 3
-                if "regular" in lname:
-                    score += 3
                 if "direct" in lname:
+                    score += 6
+                if "regular" in lname:
                     score -= 10
                 if any(x in lname for x in ["idcw", "dividend", "payout", "reinvestment"]):
                     score -= 5
@@ -242,34 +300,47 @@ def _mf_latest_nav(query_or_code: str):
     code_or_query = str(query_or_code).strip()
     if not code_or_query:
         return None, _empty_meta("missing MF query")
+
+    code = code_or_query if code_or_query.isdigit() else (_mf_scheme_code_for_query(code_or_query) or "")
+    isin = None if code_or_query.isdigit() else _mf_isin_for_query(code_or_query)
+
+    # PRIMARY: official AMFI NAV file by scheme code / ISIN. This avoids mfapi/search failures.
+    nav, meta = _amfi_latest_nav_by_code_or_isin(code or None, isin)
+    if nav is not None:
+        return nav, meta
+
+    # SECONDARY: official AMFI by exact statement/scheme name.
     if not code_or_query.isdigit():
-        # Hard-coded official AMFI codes first for the user's HDFC/Kotak/Parag holdings.
-        # This keeps live feed deterministic and avoids fuzzy-search failures.
-        code = _mf_scheme_code_for_query(code_or_query) or ""
-        if not code:
-            nav, meta = _amfi_latest_nav_by_name(code_or_query)
-            if nav is not None:
-                return nav, meta
-            code = _mf_search_code(code_or_query) or ""
-    else:
-        code = code_or_query
+        nav, meta = _amfi_latest_nav_by_name(code_or_query)
+        if nav is not None:
+            return nav, meta
+
+    # TERTIARY: mfapi by known code or search result.
+    if not code and not code_or_query.isdigit():
+        code = _mf_search_code(code_or_query) or ""
     if not code:
         return None, _empty_meta("MF scheme not found")
-    try:
-        r = requests.get(f"https://api.mfapi.in/mf/{code}/latest", timeout=8)
-        r.raise_for_status()
-        payload = r.json() or {}
-        data = payload.get("data") or []
-        if not data:
-            return None, _empty_meta("MF latest NAV missing")
-        nav = float(data[0].get("nav"))
-        return nav, {
-            "source_status": f"live AMFI NAV via mfapi.in ({code})",
-            "day_change": None, "day_change_pct": None,
-            "52w_high": None, "52w_low": None, "volume": None
-        }
-    except Exception as e:
-        return None, _empty_meta(f"MF NAV fallback: {str(e)[:60]}")
+    for url in (f"https://api.mfapi.in/mf/{code}/latest", f"https://api.mfapi.in/mf/{code}"):
+        try:
+            r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+            r.raise_for_status()
+            payload = r.json() or {}
+            data = payload.get("data") or []
+            if isinstance(data, dict):
+                nav_value = data.get("nav")
+            elif isinstance(data, list) and data:
+                nav_value = data[0].get("nav")
+            else:
+                nav_value = payload.get("nav")
+            if nav_value is not None:
+                return float(nav_value), {
+                    "source_status": f"live mfapi ({code})",
+                    "day_change": None, "day_change_pct": None,
+                    "52w_high": None, "52w_low": None, "volume": None
+                }
+        except Exception:
+            continue
+    return None, _empty_meta("MF NAV unavailable from AMFI and mfapi")
 
 def _empty_meta(error: str = ""):
     return {"52w_high": None, "52w_low": None, "volume": None, "day_change": None, "day_change_pct": None, "source_status": error or "fallback"}
