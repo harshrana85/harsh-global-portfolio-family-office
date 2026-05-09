@@ -29,20 +29,67 @@ BOND_MARKS = {
 }
 
 MF_SEARCH_ALIASES = {
-    # canonical keys from portfolio_seed.py -> mfapi search text
-    "HDFC Hybrid Equity Fund": "HDFC Hybrid Equity Fund Regular Plan Growth",
-    "HDFC Large Cap Fund": "HDFC Top 100 Fund Regular Plan Growth",
-    "HDFC Mid Cap Opportunities Fund": "HDFC Mid-Cap Opportunities Fund Regular Plan Growth",
-    "HDFC Small Cap Fund": "HDFC Small Cap Fund Regular Plan Growth",
-    "HDFC Corporate Bond Fund": "HDFC Corporate Bond Fund Regular Plan Growth",
-    "HDFC Short Term Debt Fund": "HDFC Short Term Debt Fund Regular Plan Growth",
-    "HDFC Dynamic Bond Fund": "HDFC Dynamic Bond Fund Regular Plan Growth",
-    "HDFC PSU Banking Debt Fund": "HDFC Banking and PSU Debt Fund Regular Plan Growth",
-    "Parag Parikh Flexi Cap Fund": "Parag Parikh Flexi Cap Fund Regular Plan Growth",
-    "Kotak Banking & PSU Fund": "Kotak Banking and PSU Debt Fund Regular Plan Growth",
-    "Kotak Corporate Bond Fund": "Kotak Corporate Bond Fund Regular Plan Growth",
-    "Kotak Short Term Debt Fund": "Kotak Short Duration Fund Regular Plan Growth",
+    # canonical keys from portfolio_seed.py -> official AMFI scheme names/search text
+    # These exact names are used before fuzzy search so HDFC/Kotak/Parag do not miss live NAV mapping.
+    "HDFC Hybrid Equity Fund": "HDFC Hybrid Equity Fund - Regular Plan - Growth",
+    "HDFC Large Cap Fund": "HDFC Top 100 Fund - Regular Plan - Growth",
+    "HDFC Mid Cap Opportunities Fund": "HDFC Mid-Cap Opportunities Fund - Regular Plan - Growth",
+    "HDFC Small Cap Fund": "HDFC Small Cap Fund - Regular Plan - Growth Option",
+    "HDFC Corporate Bond Fund": "HDFC Corporate Bond Fund - Regular Plan - Growth Option",
+    "HDFC Short Term Debt Fund": "HDFC Short Term Debt Fund - Growth Option",
+    "HDFC Dynamic Bond Fund": "HDFC Dynamic Debt Fund - Regular Plan - Growth Option",
+    "HDFC PSU Banking Debt Fund": "HDFC Banking and PSU Debt Fund - Regular Plan - Growth Option",
+    "Parag Parikh Flexi Cap Fund": "Parag Parikh Flexi Cap Fund - Regular Plan - Growth",
+    "Kotak Banking & PSU Fund": "Kotak Banking and PSU Debt Fund - Regular Plan - Growth",
+    "Kotak Corporate Bond Fund": "Kotak Corporate Bond Fund - Regular Plan - Growth",
+    "Kotak Short Term Debt Fund": "Kotak Bond Short Term Fund - Regular Plan - Growth",
 }
+
+MF_NAME_SYNONYMS = {
+    "HDFC PSU Banking Debt Fund": [
+        "HDFC Banking and PSU Debt Fund - Regular Plan - Growth Option",
+        "HDFC Banking & PSU Debt Fund - Regular Plan - Growth Option",
+    ],
+    "HDFC Short Term Debt Fund": [
+        "HDFC Short Term Debt Fund - Growth Option",
+        "HDFC Short Term Debt Fund - Regular Plan - Growth Option",
+    ],
+    "HDFC Dynamic Bond Fund": [
+        "HDFC Dynamic Debt Fund - Regular Plan - Growth Option",
+        "HDFC Dynamic Bond Fund - Regular Plan - Growth Option",
+    ],
+    "Kotak Banking & PSU Fund": [
+        "Kotak Banking and PSU Debt Fund - Regular Plan - Growth",
+        "Kotak Banking & PSU Debt Fund - Regular Plan - Growth",
+        "Kotak Banking and PSU Fund - Regular Plan - Growth",
+    ],
+    "Kotak Corporate Bond Fund": [
+        "Kotak Corporate Bond Fund - Regular Plan - Growth",
+        "Kotak Corporate Bond Fund - Standard Plan - Growth",
+    ],
+    "Kotak Short Term Debt Fund": [
+        "Kotak Bond Short Term Fund - Regular Plan - Growth",
+        "Kotak Bond Short Term Plan - Regular Plan - Growth",
+        "Kotak Short Term Debt Fund - Regular Plan - Growth",
+    ],
+}
+
+_AMFI_NAV_URLS = [
+    "https://www.amfiindia.com/spages/NAVAll.txt",
+    "https://www.amfiindia.com/spages/NAVOpen.txt",
+]
+
+def _mf_clean_name(x: str) -> str:
+    import re
+    x = str(x or "").lower()
+    x = x.replace("&", " and ")
+    x = x.replace("regular-growth", "regular plan growth")
+    x = x.replace("reg gr", "regular growth")
+    x = re.sub(r"[^a-z0-9]+", " ", x)
+    x = x.replace("growth option", "growth")
+    x = x.replace("regular plan", "regular")
+    x = re.sub(r"\b(fund|plan|option|scheme)\b", " ", x)
+    return re.sub(r"\s+", " ", x).strip()
 
 def _normalise_mf_query(query: str) -> str:
     q = str(query or "").strip()
@@ -52,38 +99,111 @@ def _normalise_mf_query(query: str) -> str:
     q = q.split(" - ")[0].strip()
     return MF_SEARCH_ALIASES.get(q, q)
 
+def _mf_query_candidates(query: str) -> list[str]:
+    q0 = str(query or "").replace("MF:", "").split(" - ")[0].strip()
+    primary = _normalise_mf_query(query)
+    candidates = [primary]
+    candidates.extend(MF_NAME_SYNONYMS.get(q0, []))
+    candidates.extend(MF_NAME_SYNONYMS.get(primary, []))
+    if q0 and q0 not in candidates:
+        candidates.append(q0)
+    out = []
+    for c in candidates:
+        if c and c not in out:
+            out.append(c)
+    return out
+
+@lru_cache(maxsize=4)
+def _amfi_nav_rows() -> list[dict]:
+    for url in _AMFI_NAV_URLS:
+        try:
+            r = requests.get(url, timeout=12, headers={"User-Agent": "Mozilla/5.0"})
+            r.raise_for_status()
+            rows = []
+            for line in r.text.splitlines():
+                parts = line.split(";")
+                if len(parts) >= 6 and parts[0].strip().isdigit():
+                    try:
+                        rows.append({"code": parts[0].strip(), "name": parts[3].strip(), "nav": float(parts[4]), "date": parts[5].strip()})
+                    except Exception:
+                        pass
+            if rows:
+                return rows
+        except Exception:
+            continue
+    return []
+
+def _amfi_latest_nav_by_name(query: str):
+    rows = _amfi_nav_rows()
+    if not rows:
+        return None, _empty_meta("AMFI NAVAll unavailable")
+    candidates = _mf_query_candidates(query)
+    wanted = [_mf_clean_name(c) for c in candidates]
+    # exact clean match first
+    for w, raw in zip(wanted, candidates):
+        for row in rows:
+            if _mf_clean_name(row["name"]) == w:
+                return row["nav"], {"source_status": f"live AMFI NAVAll ({row['code']}) {row['date']}", "day_change": None, "day_change_pct": None, "52w_high": None, "52w_low": None, "volume": None}
+    # token scored fallback, explicitly prefer regular + growth and avoid direct/idcw/dividend.
+    best, best_score = None, -999
+    for raw, w in zip(candidates, wanted):
+        words = [x for x in w.split() if len(x) > 2 and x not in {"regular", "growth"}]
+        for row in rows:
+            nm = _mf_clean_name(row["name"])
+            score = sum(5 for token in words if token in nm)
+            low = row["name"].lower()
+            if "regular" in low: score += 5
+            if "growth" in low: score += 5
+            if "direct" in low: score -= 20
+            if any(x in low for x in ["idcw", "dividend", "payout", "reinvestment"]): score -= 10
+            if score > best_score:
+                best, best_score = row, score
+    if best and best_score > 0:
+        return best["nav"], {"source_status": f"live AMFI NAVAll ({best['code']}) {best['date']}", "day_change": None, "day_change_pct": None, "52w_high": None, "52w_low": None, "volume": None}
+    return None, _empty_meta("AMFI scheme not found")
+
 @lru_cache(maxsize=128)
 def _mf_search_code(query: str) -> str | None:
-    q = _normalise_mf_query(query)
-    try:
-        r = requests.get("https://api.mfapi.in/mf/search", params={"q": q}, timeout=8)
-        r.raise_for_status()
-        matches = r.json() or []
-        q_words = [w.lower() for w in q.replace("&", "and").split() if len(w) > 2 and w.lower() not in {"fund", "growth", "direct", "plan", "regular"}]
-        best = None
-        best_score = -1
-        for m in matches:
-            name = str(m.get("schemeName", ""))
-            lname = name.lower().replace("&", "and")
-            score = sum(1 for w in q_words if w in lname)
-            if "growth" in lname:
-                score += 2
-            if "regular" in lname:
-                score += 1
-            if "direct" in lname and "regular" in q.lower():
-                score -= 1
-            if score > best_score:
-                best, best_score = m, score
-        return str(best.get("schemeCode")) if best else None
-    except Exception:
-        return None
+    for q in _mf_query_candidates(query):
+        try:
+            r = requests.get("https://api.mfapi.in/mf/search", params={"q": q}, timeout=8)
+            r.raise_for_status()
+            matches = r.json() or []
+            q_words = [w.lower() for w in q.replace("&", "and").replace("-", " ").split() if len(w) > 2 and w.lower() not in {"fund", "growth", "direct", "plan", "regular", "option"}]
+            best = None
+            best_score = -1
+            for m in matches:
+                name = str(m.get("schemeName", ""))
+                lname = name.lower().replace("&", "and")
+                score = sum(2 for w in q_words if w in lname)
+                if "growth" in lname:
+                    score += 3
+                if "regular" in lname:
+                    score += 3
+                if "direct" in lname:
+                    score -= 10
+                if any(x in lname for x in ["idcw", "dividend", "payout", "reinvestment"]):
+                    score -= 5
+                if score > best_score:
+                    best, best_score = m, score
+            if best and best_score > 0:
+                return str(best.get("schemeCode"))
+        except Exception:
+            continue
+    return None
 
 def _mf_latest_nav(query_or_code: str):
-    code = str(query_or_code).strip()
-    if not code:
+    code_or_query = str(query_or_code).strip()
+    if not code_or_query:
         return None, _empty_meta("missing MF query")
-    if not code.isdigit():
-        code = _mf_search_code(code) or ""
+    if not code_or_query.isdigit():
+        # Use official AMFI NAVAll exact/name match first. mfapi search is kept as backup.
+        nav, meta = _amfi_latest_nav_by_name(code_or_query)
+        if nav is not None:
+            return nav, meta
+        code = _mf_search_code(code_or_query) or ""
+    else:
+        code = code_or_query
     if not code:
         return None, _empty_meta("MF scheme not found")
     try:
