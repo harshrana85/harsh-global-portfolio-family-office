@@ -101,10 +101,11 @@ st.sidebar.metric("P/L", fmt_money(T["pnl_inr"]), f"{T['pnl_inr']/max(abs(T['inv
 st.sidebar.caption(f"Live FX: $1 = ₹{live_fx.get('USDINR', DEFAULT_FX['USDINR']):.1f} | €1 = ₹{live_fx.get('EURINR', DEFAULT_FX['EURINR']):.1f}")
 st.sidebar.caption("Live MTM: automatic for stocks, ETFs, MF NAV, SGB proxy and marked US bonds")
 
-DISPLAY_COLS = ["move_arrow", "portfolio", "asset_class", "sub_class", "name", "ticker", "currency", "quantity", "invested_rate", "live_rate", "current_rate", "invested_value", "current_value", "current_value_inr", "pnl_inr", "pnl_pct", "live_move_pct", "expected_return_pct", "yield_dividend_pct", "total_return_yield_inr", "price_status", "valuation_status"]
+DISPLAY_COLS = ["move_arrow", "portfolio", "asset_class", "sub_class", "name", "ticker", "currency", "quantity", "invested_rate", "live_rate", "current_rate", "invested_value", "current_value", "current_value_usd", "current_value_inr", "pnl_usd", "pnl_inr", "pnl_pct", "live_move_pct", "expected_return_pct", "yield_dividend_pct", "total_return_yield_inr", "price_status", "valuation_status"]
 
 MONEY_NATIVE_COLS = ["invested_rate", "live_rate", "current_rate", "invested_value", "current_value"]
 MONEY_INR_COLS = ["current_value_inr", "pnl_inr", "total_return_yield_inr", "expected_return_amount_inr", "yield_dividend_amount_inr"]
+MONEY_USD_COLS = ["current_value_usd", "invested_value_usd", "pnl_usd"]
 PCT_COLS = ["pnl_pct", "live_move_pct", "expected_return_pct", "yield_dividend_pct"]
 NUM_COLS = ["quantity"]
 
@@ -124,6 +125,14 @@ def fmt_inr(value):
         if pd.isna(value):
             return ""
         return f"₹{float(value):,.1f}"
+    except Exception:
+        return "" if value is None else str(value)
+
+def fmt_usd(value):
+    try:
+        if pd.isna(value):
+            return ""
+        return f"${float(value):,.1f}"
     except Exception:
         return "" if value is None else str(value)
 
@@ -151,7 +160,7 @@ def display_table(data: pd.DataFrame, cols=None, add_total=True) -> pd.DataFrame
         total_row["name"] = "TOTAL"
         total_row["move_arrow"] = "🟢 ▲" if data.get("pnl_inr", pd.Series([0])).sum() >= 0 else "🔴 ▼"
         total_row["currency"] = "INR"
-        for c in ["invested_value", "current_value", "current_value_inr", "pnl_inr", "total_return_yield_inr", "expected_return_amount_inr", "yield_dividend_amount_inr"]:
+        for c in ["invested_value", "current_value", "current_value_inr", "current_value_usd", "invested_value_usd", "pnl_usd", "pnl_inr", "total_return_yield_inr", "expected_return_amount_inr", "yield_dividend_amount_inr"]:
             if c in data.columns and c in total_row:
                 total_row[c] = data[c].sum()
         show = pd.concat([show, pd.DataFrame([total_row])], ignore_index=True)
@@ -163,6 +172,9 @@ def display_table(data: pd.DataFrame, cols=None, add_total=True) -> pd.DataFrame
     for c in MONEY_INR_COLS:
         if c in show.columns:
             show[c] = show[c].apply(fmt_inr)
+    for c in MONEY_USD_COLS:
+        if c in show.columns:
+            show[c] = show[c].apply(fmt_usd)
     for c in PCT_COLS:
         if c in show.columns:
             show[c] = show[c].apply(fmt_pct1)
@@ -174,7 +186,7 @@ def display_table(data: pd.DataFrame, cols=None, add_total=True) -> pd.DataFrame
         "move_arrow":"Move", "portfolio":"Portfolio", "asset_class":"Asset", "sub_class":"Type", "name":"Holding",
         "ticker":"Ticker", "currency":"Ccy", "quantity":"Qty", "invested_rate":"Invested Rate",
         "live_rate":"Live Rate", "current_rate":"Current Rate", "invested_value":"Invested",
-        "current_value":"Current", "current_value_inr":"Current INR", "pnl_inr":"P/L INR",
+        "current_value":"Current", "current_value_usd":"Current USD", "invested_value_usd":"Invested USD", "pnl_usd":"P/L USD", "current_value_inr":"Current INR", "pnl_inr":"P/L INR",
         "pnl_pct":"P/L %", "live_move_pct":"Live Move", "expected_return_pct":"Return %",
         "yield_dividend_pct":"Yield/Div %", "total_return_yield_inr":"Return+Yield INR",
         "price_status":"Price", "valuation_status":"Valuation"
@@ -204,9 +216,9 @@ def format_currency_exposure(by_ccy: pd.DataFrame) -> pd.DataFrame:
 
 if page == "Dashboard":
     st.title("Harsh Global Portfolio - Family Office")
-    st.caption("Professional consolidated dashboard · INR base · live market/FX display · valuation stays anchored unless live MTM / live FX toggles are enabled")
+    st.caption("Professional consolidated dashboard · live NAV/prices · INR base with USD equivalents · no manual FX/MTM toggles")
     c1,c2,c3,c4 = st.columns(4)
-    c1.markdown(f"<div class='card'><div class='metric-title'>Net Worth Today</div><div class='metric-value'>{fmt_money(T['current_value_inr'])}</div></div>", unsafe_allow_html=True)
+    c1.markdown(f"<div class='card'><div class='metric-title'>Net Worth Today</div><div class='metric-value'>{fmt_money(T['current_value_inr'])}</div><div class='small-muted'>≈ ${T.get('current_value_usd',0):,.1f}</div></div>", unsafe_allow_html=True)
     pnl_cls = "good" if T["pnl_inr"] >= 0 else "bad"
     c2.markdown(f"<div class='card'><div class='metric-title'>Current Profit / Loss</div><div class='metric-value {pnl_cls}'>{arrow(T['pnl_inr'])} {fmt_money(T['pnl_inr'])}</div></div>", unsafe_allow_html=True)
     c3.markdown(f"<div class='card'><div class='metric-title'>Invested Value</div><div class='metric-value'>{fmt_money(T['invested_value_inr'])}</div></div>", unsafe_allow_html=True)
@@ -247,7 +259,9 @@ elif page == "US Portfolio":
     for tab, filt in zip(tabs, filters):
         with tab:
             data = us if filt is None else us[us["asset_class"].eq(filt)]
-            styled_table(data, filt or "All US / Global Assets")
+            st.subheader(filt or "All US / Global Assets")
+            us_cols = ["move_arrow","portfolio","asset_class","sub_class","name","ticker","currency","quantity","current_value_usd","current_value_inr","pnl_usd","pnl_inr","yield_dividend_pct","total_return_yield_inr","price_status","valuation_status"]
+            st.dataframe(display_table(data, us_cols), use_container_width=True, height=470, hide_index=True)
 
 elif page == "Returns & Yield":
     st.title("Returns & Yield")

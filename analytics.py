@@ -48,6 +48,10 @@ def enrich(df: pd.DataFrame, live_prices: dict | None = None, fx: dict | None = 
     out["fx_to_inr"] = out["currency"].apply(lambda c: fx_to_inr(c, fx))
     out["invested_value_inr"] = out["invested_value"] * out["fx_to_inr"]
     out["current_value_inr"] = out["current_value"] * out["fx_to_inr"]
+    usd_inr = float(fx.get("USDINR", DEFAULT_FX["USDINR"])) or DEFAULT_FX["USDINR"]
+    out["invested_value_usd"] = out["invested_value_inr"] / usd_inr
+    out["current_value_usd"] = out["current_value_inr"] / usd_inr
+    out["pnl_usd"] = (out["current_value_inr"] - out["invested_value_inr"]) / usd_inr
     out["pnl_inr"] = out["current_value_inr"] - out["invested_value_inr"]
     out["pnl_pct"] = np.where(out["invested_value_inr"].abs() > 0, out["pnl_inr"] / out["invested_value_inr"], 0)
     out["live_move"] = out["live_rate"] - out["fallback_current_rate"]
@@ -61,7 +65,13 @@ def enrich(df: pd.DataFrame, live_prices: dict | None = None, fx: dict | None = 
     return out
 
 def totals(df: pd.DataFrame):
-    return {k: float(df[k].sum()) for k in ["invested_value_inr", "current_value_inr", "pnl_inr", "expected_return_amount_inr", "yield_dividend_amount_inr", "total_return_yield_inr"]}
+    keys = ["invested_value_inr", "current_value_inr", "pnl_inr", "expected_return_amount_inr", "yield_dividend_amount_inr", "total_return_yield_inr"]
+    out = {k: float(df[k].sum()) for k in keys}
+    if "current_value_usd" in df.columns:
+        out["current_value_usd"] = float(df["current_value_usd"].sum())
+    if "invested_value_usd" in df.columns:
+        out["invested_value_usd"] = float(df["invested_value_usd"].sum())
+    return out
 
 def fmt_money(x, currency="INR", decimals=1):
     s = CURRENCY_SYMBOLS.get(str(currency).upper(), "")

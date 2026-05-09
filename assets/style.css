@@ -1,8 +1,8 @@
 
-:root{--green:#16834a;--red:#c9342f;--gold:#c7a74a;--ink:#172033;}
+:root{--bg:#f5f6f7;--card:#ffffff;--ink:#172033;--green:#16834a;--red:#c9342f;--gold:#c7a74a;}
+html,body,[class*="css"]{font-family:Inter,Arial,sans-serif;}
 .block-container{padding-top:1rem;}
-[data-testid="stSidebar"]{background:#eef2f5;border-right:1px solid #d9dee8;}
-[data-testid="stDataFrame"]{font-size:11px!important;}
-thead tr th{font-size:11px!important;background:#eef2f6!important;}
-.card{animation:fadeUp .45s ease both;}
-@keyframes fadeUp{from{opacity:.2;transform:translateY(8px)}to{opacity:1;transform:none}}
+.metric-card,.card{background:white;padding:18px;border-radius:18px;box-shadow:0 8px 24px rgba(0,0,0,.06);border:1px solid #e5e7eb;transition:.25s;}
+.metric-card:hover,.card:hover{transform:translateY(-2px);}
+.bull,.good{color:var(--green);font-weight:800}.bear,.bad{color:var(--red);font-weight:800}
+[data-testid="stSidebar"]{background:#eef2f5;} [data-testid="stDataFrame"]{font-size:11px;} thead tr th{font-size:11px!important;}
