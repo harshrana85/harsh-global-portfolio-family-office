@@ -28,49 +28,77 @@ BOND_MARKS = {
     "US30231GBF81": 0.907560,   # XOM 4.227 2040
 }
 
+# Deterministic AMFI/mfapi scheme-code map for live NAV.
+# Keeping portfolio labels unchanged, but resolving HDFC/Kotak/Parag directly by AMFI code avoids fuzzy-search misses.
+MF_SCHEME_CODE_MAP = {
+    "HDFC Hybrid Equity Fund": "119062",
+    "HDFC Large Cap Fund": "119018",
+    "HDFC Mid Cap Opportunities Fund": "118989",
+    "HDFC Mid Cap Fund": "118989",
+    "HDFC Small Cap Fund": "130503",
+    "HDFC Corporate Bond Fund": "118987",
+    "HDFC Short Term Debt Fund": "119016",
+    "HDFC Dynamic Bond Fund": "119075",
+    "HDFC Dynamic Debt Fund": "119075",
+    "HDFC PSU Banking Debt Fund": "128629",
+    "HDFC Banking and PSU Debt Fund": "128629",
+    "Parag Parikh Flexi Cap Fund": "122639",
+    "Kotak Banking & PSU Fund": "123693",
+    "Kotak Banking and PSU Debt Fund": "123693",
+    "Kotak Corporate Bond Fund": "133791",
+    "Kotak Short Term Debt Fund": "119739",
+    "Kotak Bond Short Term Fund": "119739",
+}
+
 MF_SEARCH_ALIASES = {
-    # canonical keys from portfolio_seed.py -> official AMFI scheme names/search text
-    # These exact names are used before fuzzy search so HDFC/Kotak/Parag do not miss live NAV mapping.
-    "HDFC Hybrid Equity Fund": "HDFC Hybrid Equity Fund - Regular Plan - Growth",
-    "HDFC Large Cap Fund": "HDFC Top 100 Fund - Regular Plan - Growth",
-    "HDFC Mid Cap Opportunities Fund": "HDFC Mid-Cap Opportunities Fund - Regular Plan - Growth",
-    "HDFC Small Cap Fund": "HDFC Small Cap Fund - Regular Plan - Growth Option",
-    "HDFC Corporate Bond Fund": "HDFC Corporate Bond Fund - Regular Plan - Growth Option",
-    "HDFC Short Term Debt Fund": "HDFC Short Term Debt Fund - Growth Option",
-    "HDFC Dynamic Bond Fund": "HDFC Dynamic Debt Fund - Regular Plan - Growth Option",
-    "HDFC PSU Banking Debt Fund": "HDFC Banking and PSU Debt Fund - Regular Plan - Growth Option",
-    "Parag Parikh Flexi Cap Fund": "Parag Parikh Flexi Cap Fund - Regular Plan - Growth",
-    "Kotak Banking & PSU Fund": "Kotak Banking and PSU Debt Fund - Regular Plan - Growth",
-    "Kotak Corporate Bond Fund": "Kotak Corporate Bond Fund - Regular Plan - Growth",
-    "Kotak Short Term Debt Fund": "Kotak Bond Short Term Fund - Regular Plan - Growth",
+    # canonical keys from portfolio_seed.py -> official Direct/Growth scheme names/search text
+    "HDFC Hybrid Equity Fund": "HDFC Hybrid Equity Fund - Direct Plan - Growth Option",
+    "HDFC Large Cap Fund": "HDFC Large Cap Fund - Direct Plan - Growth Option",
+    "HDFC Mid Cap Opportunities Fund": "HDFC Mid Cap Fund - Direct Plan - Growth Option",
+    "HDFC Small Cap Fund": "HDFC Small Cap Fund - Direct Growth Plan",
+    "HDFC Corporate Bond Fund": "HDFC Corporate Bond Fund - Direct Plan - Growth Option",
+    "HDFC Short Term Debt Fund": "HDFC Short Term Debt Fund - Direct Plan - Growth Option",
+    "HDFC Dynamic Bond Fund": "HDFC Dynamic Debt Fund - Direct - Growth Option",
+    "HDFC PSU Banking Debt Fund": "HDFC Banking and PSU Debt Fund - Direct Growth Option",
+    "Parag Parikh Flexi Cap Fund": "Parag Parikh Flexi Cap Fund - Direct Plan - Growth",
+    "Kotak Banking & PSU Fund": "Kotak Banking and PSU Debt Fund Direct Growth",
+    "Kotak Corporate Bond Fund": "Kotak Corporate Bond Fund Direct Growth",
+    "Kotak Short Term Debt Fund": "Kotak Bond Fund (Short Term) - Direct Plan - Growth",
 }
 
 MF_NAME_SYNONYMS = {
     "HDFC PSU Banking Debt Fund": [
-        "HDFC Banking and PSU Debt Fund - Regular Plan - Growth Option",
-        "HDFC Banking & PSU Debt Fund - Regular Plan - Growth Option",
+        "HDFC Banking and PSU Debt Fund - Direct Growth Option",
+        "HDFC Banking & PSU Debt Fund Direct Plan Growth Option",
     ],
     "HDFC Short Term Debt Fund": [
-        "HDFC Short Term Debt Fund - Growth Option",
-        "HDFC Short Term Debt Fund - Regular Plan - Growth Option",
+        "HDFC Short Term Debt Fund - Direct Plan - Growth Option",
+        "HDFC Short Term Debt Fund Direct Growth",
     ],
     "HDFC Dynamic Bond Fund": [
-        "HDFC Dynamic Debt Fund - Regular Plan - Growth Option",
-        "HDFC Dynamic Bond Fund - Regular Plan - Growth Option",
+        "HDFC Dynamic Debt Fund - Direct - Growth Option",
+        "HDFC Dynamic Debt Fund Direct Growth",
+    ],
+    "HDFC Large Cap Fund": [
+        "HDFC Large Cap Fund - Direct Plan - Growth Option",
+        "HDFC Top 100 Fund - Direct Plan - Growth",
+    ],
+    "HDFC Mid Cap Opportunities Fund": [
+        "HDFC Mid Cap Fund - Direct Plan - Growth Option",
+        "HDFC Mid-Cap Opportunities Fund - Direct Plan - Growth Option",
     ],
     "Kotak Banking & PSU Fund": [
-        "Kotak Banking and PSU Debt Fund - Regular Plan - Growth",
-        "Kotak Banking & PSU Debt Fund - Regular Plan - Growth",
-        "Kotak Banking and PSU Fund - Regular Plan - Growth",
+        "Kotak Banking and PSU Debt Fund Direct Growth",
+        "Kotak Banking and PSU Debt Fund - Direct Plan - Growth",
     ],
     "Kotak Corporate Bond Fund": [
-        "Kotak Corporate Bond Fund - Regular Plan - Growth",
-        "Kotak Corporate Bond Fund - Standard Plan - Growth",
+        "Kotak Corporate Bond Fund Direct Growth",
+        "Kotak Corporate Bond Fund - Direct Plan - Growth",
     ],
     "Kotak Short Term Debt Fund": [
-        "Kotak Bond Short Term Fund - Regular Plan - Growth",
-        "Kotak Bond Short Term Plan - Regular Plan - Growth",
-        "Kotak Short Term Debt Fund - Regular Plan - Growth",
+        "Kotak Bond Fund (Short Term) - Direct Plan - Growth",
+        "Kotak Bond Short Term Fund Direct Growth",
+        "Kotak Bond S T- Gr-Direct Plan",
     ],
 }
 
@@ -112,6 +140,24 @@ def _mf_query_candidates(query: str) -> list[str]:
         if c and c not in out:
             out.append(c)
     return out
+
+def _mf_scheme_code_for_query(query: str) -> str | None:
+    q0 = str(query or "").replace("MF:", "").strip()
+    q0 = q0.split(" - ")[0].strip()
+    candidates = [q0, _normalise_mf_query(query)] + _mf_query_candidates(query)
+    clean_map = {_mf_clean_name(k): v for k, v in MF_SCHEME_CODE_MAP.items()}
+    for c in candidates:
+        if not c:
+            continue
+        if c in MF_SCHEME_CODE_MAP:
+            return MF_SCHEME_CODE_MAP[c]
+        cleaned = _mf_clean_name(c)
+        if cleaned in clean_map:
+            return clean_map[cleaned]
+        for k, v in clean_map.items():
+            if cleaned and (cleaned in k or k in cleaned):
+                return v
+    return None
 
 @lru_cache(maxsize=4)
 def _amfi_nav_rows() -> list[dict]:
@@ -197,11 +243,14 @@ def _mf_latest_nav(query_or_code: str):
     if not code_or_query:
         return None, _empty_meta("missing MF query")
     if not code_or_query.isdigit():
-        # Use official AMFI NAVAll exact/name match first. mfapi search is kept as backup.
-        nav, meta = _amfi_latest_nav_by_name(code_or_query)
-        if nav is not None:
-            return nav, meta
-        code = _mf_search_code(code_or_query) or ""
+        # Hard-coded official AMFI codes first for the user's HDFC/Kotak/Parag holdings.
+        # This keeps live feed deterministic and avoids fuzzy-search failures.
+        code = _mf_scheme_code_for_query(code_or_query) or ""
+        if not code:
+            nav, meta = _amfi_latest_nav_by_name(code_or_query)
+            if nav is not None:
+                return nav, meta
+            code = _mf_search_code(code_or_query) or ""
     else:
         code = code_or_query
     if not code:
