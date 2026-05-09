@@ -1,8 +1,3 @@
-
-:root{--bg:#f5f6f7;--card:#ffffff;--ink:#172033;--green:#16834a;--red:#c9342f;--gold:#c7a74a;}
-html,body,[class*="css"]{font-family:Inter,Arial,sans-serif;}
-.block-container{padding-top:1rem;}
-.metric-card,.card{background:white;padding:18px;border-radius:18px;box-shadow:0 8px 24px rgba(0,0,0,.06);border:1px solid #e5e7eb;transition:.25s;}
-.metric-card:hover,.card:hover{transform:translateY(-2px);}
-.bull,.good{color:var(--green);font-weight:800}.bear,.bad{color:var(--red);font-weight:800}
-[data-testid="stSidebar"]{background:#eef2f5;} [data-testid="stDataFrame"]{font-size:11px;} thead tr th{font-size:11px!important;}
+:root{--green:#16834a;--red:#c9342f;--gold:#b98b2f;}
+.metric-card{border-radius:20px;box-shadow:0 12px 28px rgba(20,31,49,.07);}
+.bull{color:var(--green)}.bear{color:var(--red)}

@@ -1,22 +1,15 @@
 # Harsh Global Portfolio - Family Office
 
-Final accounting fix package.
+Corrected accounting package:
+- Cost basis separated from live current value
+- USD/INR fixed at approved 94.44
+- No FX toggle / no MTM toggle
+- Indian equity cost basis from sheet, live current value from Yahoo
+- US securities quantities from IBKR screenshot
+- US bonds use supplied broker marks
+- UAE real estate fixed INR, USD equivalent displayed
+- SGB uses base ₹24L cost basis and live gold proxy as current
+- FDs 6.5%, Govt bonds 7.2%, UAE banks 1%
 
-## Main file path
-`app.py`
-
-## Password secret
-```toml
-APP_PASSWORD = "Harsh@1985"
-```
-
-## Key fixes
-- Mutual fund invested/gross totals match the submitted structure: ICICI ₹10,825,948, HDFC ₹17,486,481, Parag ₹800,000, Kotak ₹8,900,000.
-- Mutual fund current values are live: AMFI NAV × exact units.
-- Sovereign Gold Bond: 160 units, cost ₹10,02,080, 2.5% coupon; live gold proxy for current value.
-- US bonds use broker marks from your screenshot and ISINs.
-- US/global real estate remains fixed INR but shows USD equivalent using live USDINR.
-- No FX or MTM toggle. Live valuation is automatic where identifiers exist.
-
-## Deploy
-Upload all files to GitHub root and deploy on Streamlit Cloud with main file path `app.py`.
+Main file path: app.py
+Password secret: APP_PASSWORD = "Harsh@1985"

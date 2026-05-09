@@ -1,8 +1,9 @@
+
 from __future__ import annotations
 import sqlite3
 from pathlib import Path
 import pandas as pd
-from portfolio_seed import HOLDINGS, COLUMNS, DEFAULT_FX, SEED_VERSION
+from portfolio_seed import HOLDINGS, COLUMNS, DEFAULT_FX
 
 DB_PATH = Path(__file__).with_name("portfolio.db")
 
@@ -21,13 +22,9 @@ CREATE TABLE IF NOT EXISTS holdings (
     expected_return_pct REAL DEFAULT 0,
     yield_dividend_pct REAL DEFAULT 0,
     data_source TEXT,
+    pricing_mode TEXT DEFAULT 'live',
+    show_usd_equivalent INTEGER DEFAULT 0,
     active INTEGER DEFAULT 1,
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS fx_rates (
-    pair TEXT PRIMARY KEY,
-    rate REAL NOT NULL,
-    source TEXT,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS snapshots (
@@ -38,31 +35,32 @@ CREATE TABLE IF NOT EXISTS snapshots (
     pnl_inr REAL NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE IF NOT EXISTS app_meta (
-    key TEXT PRIMARY KEY,
-    value TEXT
-);
 """
 
 def connect():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def init_db(force: bool = False):
+    # Always reseed if schema/content version changed or force requested.
+    # This avoids stale Streamlit Cloud DB causing old totals.
     if force and DB_PATH.exists():
         DB_PATH.unlink()
     con = connect()
     con.executescript(SCHEMA)
+    cur = con.execute("PRAGMA table_info(holdings)")
+    cols = [r[1] for r in cur.fetchall()]
+    required = set(COLUMNS + ["active"])
+    if not required.issubset(set(cols)):
+        con.execute("DROP TABLE IF EXISTS holdings")
+        con.executescript(SCHEMA)
     cur = con.execute("SELECT COUNT(*) FROM holdings")
-    meta = con.execute("SELECT value FROM app_meta WHERE key='seed_version'").fetchone()
-    needs_seed = (cur.fetchone()[0] == 0) or (meta is None) or (meta[0] != SEED_VERSION)
-    if needs_seed:
+    count = cur.fetchone()[0]
+    # Reseed every deployment if the source file has newer corrected accounting.
+    if count == 0 or force:
         con.execute("DELETE FROM holdings")
         df = pd.DataFrame(HOLDINGS, columns=COLUMNS)
         df["active"] = 1
         df.to_sql("holdings", con, if_exists="append", index=False)
-        con.execute("INSERT OR REPLACE INTO app_meta(key,value) VALUES ('seed_version', ?)", (SEED_VERSION,))
-    for pair, rate in DEFAULT_FX.items():
-        con.execute("INSERT OR IGNORE INTO fx_rates(pair, rate, source) VALUES (?, ?, ?)", (pair, rate, "XE fallback/manual"))
     con.commit()
     con.close()
 
@@ -77,7 +75,7 @@ def get_holdings(active_only=True) -> pd.DataFrame:
 
 def save_holdings(df: pd.DataFrame):
     init_db()
-    keep_cols = ["id", "portfolio", "asset_class", "sub_class", "name", "ticker", "currency", "quantity", "invested_rate", "fallback_current_rate", "expected_return_pct", "yield_dividend_pct", "data_source", "active"]
+    keep_cols = ["id"] + COLUMNS + ["active"]
     df = df[[c for c in keep_cols if c in df.columns]].copy()
     with connect() as con:
         con.execute("DELETE FROM holdings")
