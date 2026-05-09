@@ -31,6 +31,14 @@ BOND_MARKS = {
 # Deterministic AMFI/mfapi scheme-code map for live NAV.
 # Keeping portfolio labels unchanged, but resolving HDFC/Kotak/Parag directly by AMFI code avoids fuzzy-search misses.
 MF_SCHEME_CODE_MAP = {
+    "ICICI Prudential Balanced Advantage Fund": "120377",
+    "ICICI Prudential Balanced Advantage Fund Direct": "120377",
+    "ICICI Prudential Equity & Debt Fund": "120251",
+    "ICICI Prudential Bluechip / Large Cap Fund": "120586",
+    "ICICI Prudential Bluechip Fund": "120586",
+    "ICICI Prudential Large Cap Fund": "120586",
+    "ICICI Prudential Multi-Asset Fund": "120334",
+    "ICICI Prudential Multi Asset Fund": "120334",
     "HDFC Hybrid Equity Fund": "119062",
     "HDFC Large Cap Fund": "119018",
     "HDFC Mid Cap Opportunities Fund": "118989",
@@ -54,6 +62,14 @@ MF_SCHEME_CODE_MAP = {
 # Official ISINs from uploaded AMC statements. AMFI NAVAll contains ISIN columns,
 # so resolving by ISIN is more stable than fuzzy names or third-party search.
 MF_ISIN_MAP = {
+    "ICICI Prudential Balanced Advantage Fund": "INF109K012B0",
+    "ICICI Prudential Balanced Advantage Fund Direct": "INF109K012B0",
+    "ICICI Prudential Equity & Debt Fund": "INF109K01Y07",
+    "ICICI Prudential Bluechip / Large Cap Fund": "INF109K016L0",
+    "ICICI Prudential Bluechip Fund": "INF109K016L0",
+    "ICICI Prudential Large Cap Fund": "INF109K016L0",
+    "ICICI Prudential Multi-Asset Fund": "INF109K015K4",
+    "ICICI Prudential Multi Asset Fund": "INF109K015K4",
     "HDFC Hybrid Equity Fund": "INF179K01FK4",
     "HDFC Large Cap Fund": "INF179K01YV8",
     "HDFC Flexi Cap Fund": "INF179K01UT0",
@@ -75,6 +91,10 @@ MF_ISIN_MAP = {
 }
 
 MF_SEARCH_ALIASES = {
+    "ICICI Prudential Balanced Advantage Fund": "ICICI Prudential Balanced Advantage Fund Direct Plan Growth",
+    "ICICI Prudential Equity & Debt Fund": "ICICI Prudential Equity & Debt Fund Direct Plan Growth",
+    "ICICI Prudential Bluechip / Large Cap Fund": "ICICI Prudential Large Cap Fund Direct Growth",
+    "ICICI Prudential Multi-Asset Fund": "ICICI Prudential Multi Asset Fund Direct Growth",
     # canonical keys from portfolio_seed.py -> official Direct/Growth scheme names/search text
     "HDFC Hybrid Equity Fund": "HDFC Hybrid Equity Fund - Direct Plan - Growth Option",
     "HDFC Large Cap Fund": "HDFC Large Cap Fund - Direct Plan - Growth Option",
@@ -266,6 +286,96 @@ def _amfi_latest_nav_by_name(query: str):
         return best["nav"], {"source_status": f"live AMFI NAVAll ({best['code']}) {best['date']}", "day_change": None, "day_change_pct": None, "52w_high": None, "52w_low": None, "volume": None}
     return None, _empty_meta("AMFI scheme not found")
 
+
+# Alternate MF NAV website fallbacks used only if AMFI/mfapi do not return.
+# These do not change portfolio formulas; they only supply live NAV into safe_price().
+MF_WEB_FALLBACKS = {
+    "HDFC Hybrid Equity Fund": ["https://groww.in/mutual-funds/hdfc-hybrid-equity-fund-direct-growth"],
+    "HDFC Large Cap Fund": ["https://groww.in/mutual-funds/hdfc-large-cap-fund-direct-growth", "https://cleartax.in/mutual-funds/hdfc-mutual-fund/hdfc-large-cap-fund-direct/INF179K01YV8"],
+    "HDFC Mid Cap Opportunities Fund": ["https://groww.in/mutual-funds/hdfc-mid-cap-opportunities-fund-direct-growth"],
+    "HDFC Mid Cap Fund": ["https://groww.in/mutual-funds/hdfc-mid-cap-opportunities-fund-direct-growth"],
+    "HDFC Small Cap Fund": ["https://groww.in/mutual-funds/hdfc-small-cap-fund-direct-growth"],
+    "HDFC Corporate Bond Fund": ["https://groww.in/mutual-funds/hdfc-corporate-bond-fund-direct-growth"],
+    "HDFC Short Term Debt Fund": ["https://groww.in/mutual-funds/hdfc-short-term-debt-fund-direct-growth"],
+    "HDFC Dynamic Bond Fund": ["https://groww.in/mutual-funds/hdfc-dynamic-debt-fund-direct-growth"],
+    "HDFC Dynamic Debt Fund": ["https://groww.in/mutual-funds/hdfc-dynamic-debt-fund-direct-growth"],
+    "HDFC PSU Banking Debt Fund": ["https://groww.in/mutual-funds/hdfc-banking-and-psu-debt-fund-direct-growth"],
+    "HDFC Banking and PSU Debt Fund": ["https://groww.in/mutual-funds/hdfc-banking-and-psu-debt-fund-direct-growth"],
+    "Parag Parikh Flexi Cap Fund": ["https://groww.in/mutual-funds/parag-parikh-long-term-equity-fund-direct-growth", "https://groww.in/mutual-funds/parag-parikh-flexi-cap-fund-direct-growth"],
+    "Kotak Banking & PSU Fund": ["https://groww.in/mutual-funds/kotak-banking-and-psu-debt-fund-direct-growth"],
+    "Kotak Banking and PSU Debt Fund": ["https://groww.in/mutual-funds/kotak-banking-and-psu-debt-fund-direct-growth"],
+    "Kotak Corporate Bond Fund": ["https://groww.in/mutual-funds/kotak-corporate-bond-fund-direct-growth", "https://www.dezerv.in/mutual-funds/kotak-corporate-bond-fund-direct-growth-inf178l01by0/"],
+    "Kotak Short Term Debt Fund": ["https://groww.in/mutual-funds/kotak-bond-short-term-fund-direct-growth"],
+    "Kotak Bond Short Term Fund": ["https://groww.in/mutual-funds/kotak-bond-short-term-fund-direct-growth"],
+    "ICICI Prudential Balanced Advantage Fund": ["https://groww.in/mutual-funds/icici-prudential-balanced-advantage-fund-direct-growth", "https://www.paytmmoney.com/mutual-funds/scheme/icici-prudential-balanced-advantage-direct-growth/inf109k012b0"],
+    "ICICI Prudential Equity & Debt Fund": ["https://groww.in/mutual-funds/icici-prudential-balanced-direct-growth", "https://www.paytmmoney.com/mutual-funds/scheme/icici-prudential-equity-debt-fund-direct-growth/inf109k01y07"],
+    "ICICI Prudential Bluechip / Large Cap Fund": ["https://groww.in/mutual-funds/icici-prudential-bluechip-fund-direct-growth", "https://www.paytmmoney.com/mutual-funds/scheme/icici-prudential-bluechip-fund-direct-growth/inf109k016l0"],
+    "ICICI Prudential Large Cap Fund": ["https://groww.in/mutual-funds/icici-prudential-bluechip-fund-direct-growth", "https://www.paytmmoney.com/mutual-funds/scheme/icici-prudential-bluechip-fund-direct-growth/inf109k016l0"],
+    "ICICI Prudential Multi-Asset Fund": ["https://groww.in/mutual-funds/icici-prudential-multi-asset-fund-direct-growth"],
+    "ICICI Prudential Multi Asset Fund": ["https://groww.in/mutual-funds/icici-prudential-multi-asset-fund-direct-growth"],
+}
+
+def _mf_web_urls_for_query(query: str) -> list[str]:
+    q0 = str(query or "").replace("MF:", "").split(" - ")[0].strip()
+    candidates = [q0, _normalise_mf_query(query)] + _mf_query_candidates(query)
+    clean_map = {_mf_clean_name(k): v for k, v in MF_WEB_FALLBACKS.items()}
+    urls = []
+    for c in candidates:
+        if not c:
+            continue
+        direct = MF_WEB_FALLBACKS.get(c)
+        if direct:
+            urls.extend(direct)
+        cleaned = _mf_clean_name(c)
+        for k, v in clean_map.items():
+            if cleaned and (cleaned == k or cleaned in k or k in cleaned):
+                urls.extend(v)
+    out = []
+    for u in urls:
+        if u and u not in out:
+            out.append(u)
+    return out
+
+def _extract_nav_from_html(html: str) -> float | None:
+    import re
+    text = re.sub(r"\\u20b9", "₹", html or "")
+    text = text.replace("&nbsp;", " ").replace(",", "")
+    patterns = [
+        r'NAV[^0-9₹]{0,80}₹?\s*([0-9]{1,6}(?:\.\d{1,6})?)',
+        r'latest\s+NAV[^0-9₹]{0,120}₹?\s*([0-9]{1,6}(?:\.\d{1,6})?)',
+        r'Net\s+Asset\s+Value[^0-9₹]{0,120}₹?\s*([0-9]{1,6}(?:\.\d{1,6})?)',
+        r'"nav"\s*:\s*"?([0-9]{1,6}(?:\.\d{1,6})?)"?',
+        r'"navValue"\s*:\s*"?([0-9]{1,6}(?:\.\d{1,6})?)"?',
+        r'"currentNav"\s*:\s*"?([0-9]{1,6}(?:\.\d{1,6})?)"?',
+    ]
+    vals = []
+    for pat in patterns:
+        for m in re.finditer(pat, text, flags=re.IGNORECASE):
+            try:
+                v = float(m.group(1))
+                if 1 <= v <= 10000:
+                    vals.append(v)
+            except Exception:
+                pass
+    if not vals:
+        return None
+    # Prefer the first page-declared NAV; filters avoid AUM/return percentages.
+    return vals[0]
+
+def _mf_latest_nav_from_web(query: str):
+    headers = {"User-Agent": "Mozilla/5.0", "Accept": "text/html,application/xhtml+xml"}
+    for url in _mf_web_urls_for_query(query):
+        try:
+            r = requests.get(url, timeout=10, headers=headers)
+            if r.status_code >= 400:
+                continue
+            nav = _extract_nav_from_html(r.text)
+            if nav is not None:
+                return nav, {"source_status": f"live web NAV ({url.split('/')[2]})", "day_change": None, "day_change_pct": None, "52w_high": None, "52w_low": None, "volume": None}
+        except Exception:
+            continue
+    return None, _empty_meta("MF web NAV unavailable")
+
 @lru_cache(maxsize=128)
 def _mf_search_code(query: str) -> str | None:
     for q in _mf_query_candidates(query):
@@ -340,7 +450,10 @@ def _mf_latest_nav(query_or_code: str):
                 }
         except Exception:
             continue
-    return None, _empty_meta("MF NAV unavailable from AMFI and mfapi")
+    nav, meta = _mf_latest_nav_from_web(code_or_query)
+    if nav is not None:
+        return nav, meta
+    return None, _empty_meta("MF NAV unavailable from AMFI, mfapi and web")
 
 def _empty_meta(error: str = ""):
     return {"52w_high": None, "52w_low": None, "volume": None, "day_change": None, "day_change_pct": None, "source_status": error or "fallback"}
